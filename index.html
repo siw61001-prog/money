@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F3F5F2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111513" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>우리 가계부</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231F5C4A'/%3E%3Cpath d='M9 10h14M9 16h14M9 22h9' stroke='%23fff' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>우리 가계부</span>
+        <span class="mode-badge" id="mode-badge" hidden>데모 모드</span>
+      </div>
+      <div class="seg who-seg" id="who-seg" role="tablist" aria-label="보는 사람"></div>
+      <div class="month-nav" aria-label="월 선택">
+        <button class="icon-btn" id="prev-month" aria-label="이전 달">‹</button>
+        <button class="month-label" id="month-label" aria-label="이번 달로 이동"></button>
+        <button class="icon-btn" id="next-month" aria-label="다음 달">›</button>
+      </div>
+    </div>
+    <nav class="tabs" id="tabs" aria-label="화면">
+      <a href="#dashboard" data-view="dashboard"><span class="tab-ico" aria-hidden="true">▤</span>대시보드</a>
+      <a href="#list" data-view="list"><span class="tab-ico" aria-hidden="true">≡</span>내역</a>
+      <a href="#assets" data-view="assets"><span class="tab-ico" aria-hidden="true">◫</span>자산</a>
+      <a href="#settings" data-view="settings"><span class="tab-ico" aria-hidden="true">⚙</span>설정</a>
+    </nav>
+  </header>
+
+  <main class="wrap" id="main">
+    <section id="login" class="login" hidden>
+      <div class="login-card">
+        <span class="brand-mark big" aria-hidden="true"></span>
+        <h1>우리 가계부</h1>
+        <p>인원·혜미의 수입, 지출, 자산을 한 곳에서 기록합니다. 등록된 Google 계정으로 로그인하세요.</p>
+        <button class="btn primary" id="login-btn">Google로 로그인</button>
+        <p class="error" id="login-error" hidden></p>
+      </div>
+    </section>
+    <div id="loading" class="loading">불러오는 중…</div>
+    <p class="banner error" id="error-banner" hidden></p>
+    <section id="view-dashboard" class="view" hidden></section>
+    <section id="view-list" class="view" hidden></section>
+    <section id="view-assets" class="view" hidden></section>
+    <section id="view-settings" class="view" hidden></section>
+  </main>
+
+  <button class="fab" id="fab" hidden aria-label="내역 입력"><span aria-hidden="true">＋</span><span class="fab-text">내역 입력</span></button>
+
+  <dialog id="tx-dialog" class="sheet" aria-labelledby="tx-title">
+    <form id="tx-form" method="dialog" novalidate>
+      <div class="sheet-head">
+        <h2 id="tx-title">내역 입력</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
+      </div>
+      <div class="field">
+        <span class="label">누구</span>
+        <div class="seg" id="tx-owner"></div>
+      </div>
+      <div class="field">
+        <span class="label">구분</span>
+        <div class="seg" id="tx-type">
+          <button type="button" data-v="variable">소비지출</button>
+          <button type="button" data-v="fixed">고정비용</button>
+          <button type="button" data-v="income">수입</button>
+        </div>
+      </div>
+      <div class="row2">
+        <label class="field"><span class="label">날짜</span><input type="date" id="tx-date" required></label>
+        <label class="field"><span class="label">금액 (원)</span><input type="text" id="tx-amount" inputmode="numeric" autocomplete="off" placeholder="0" required></label>
+      </div>
+      <div class="field">
+        <span class="label">분류</span>
+        <div class="chips" id="tx-category"></div>
+      </div>
+      <div class="field" id="tx-method-field">
+        <span class="label">결제 수단</span>
+        <div class="chips" id="tx-method"></div>
+      </div>
+      <label class="field"><span class="label">메모</span><input type="text" id="tx-memo" list="memo-list" autocomplete="off" placeholder="예: 이마트 장보기"></label>
+      <datalist id="memo-list"></datalist>
+      <div class="suggest-box" id="tx-hint" role="status" hidden></div>
+      <p class="error" id="tx-error" hidden></p>
+      <div class="sheet-actions">
+        <button type="button" class="btn danger ghost" id="tx-delete" hidden>삭제</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="tx-save-next">저장 후 계속</button>
+        <button type="submit" class="btn primary" id="tx-save">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="asset-dialog" class="sheet" aria-labelledby="asset-title">
+    <form id="asset-form" method="dialog" novalidate>
+      <div class="sheet-head">
+        <h2 id="asset-title">자산 항목</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
+      </div>
+      <div class="field"><span class="label">누구</span><div class="seg" id="asset-owner"></div></div>
+      <div class="field">
+        <span class="label">구분</span>
+        <div class="seg" id="asset-kind"><button type="button" data-v="자산">자산</button><button type="button" data-v="부채">부채</button></div>
+      </div>
+      <div class="row2">
+        <label class="field"><span class="label">분류</span><input type="text" id="asset-group" list="asset-group-list" placeholder="현금, 투자, 대출…"></label>
+        <label class="field"><span class="label">상세 항목</span><input type="text" id="asset-name" placeholder="파킹통장"></label>
+      </div>
+      <datalist id="asset-group-list"></datalist>
+      <div class="row2">
+        <label class="field"><span class="label">금융기관/보관처</span><input type="text" id="asset-place"></label>
+        <label class="field"><span class="label">평가 금액 (원)</span><input type="text" id="asset-amount" inputmode="numeric" autocomplete="off" placeholder="0"></label>
+      </div>
+      <label class="field"><span class="label">비고</span><input type="text" id="asset-note"></label>
+      <p class="error" id="asset-error" hidden></p>
+      <div class="sheet-actions">
+        <button type="button" class="btn danger ghost" id="asset-delete" hidden>삭제</button>
+        <span class="spacer"></span>
+        <button type="submit" class="btn primary">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="upload-dialog" class="sheet wide" aria-labelledby="upload-title">
+    <div class="sheet-body">
+      <div class="sheet-head">
+        <h2 id="upload-title">엑셀 일괄 등록</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
+      </div>
+      <ol class="steps">
+        <li>
+          <div><b>양식 받기</b><p class="hint">‘내역’ 시트에 날짜·누구·구분·분류·결제 수단·금액·메모를 한 줄씩 적습니다. 예전 가계부 파일도 그대로 올릴 수 있어요.</p></div>
+          <button type="button" class="btn" id="template-btn">양식 다운로드 (.xlsx)</button>
+        </li>
+        <li>
+          <div><b>‘누구’ 칸이 빈 줄은</b><p class="hint">이 사람 내역으로 넣습니다.</p></div>
+          <div class="seg" id="upload-owner"></div>
+        </li>
+        <li>
+          <div><b>파일 올리기</b><p class="hint">여러 파일을 한 번에 골라도 됩니다.</p></div>
+          <label class="btn primary" for="upload-input">파일 선택</label>
+          <input type="file" id="upload-input" accept=".xlsx,.xls" multiple hidden>
+        </li>
+      </ol>
+      <div id="upload-preview"></div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

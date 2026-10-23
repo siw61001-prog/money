@@ -1,0 +1,11 @@
+# 개인 가계부 원본은 절대 올리지 않는다 (GitHub Pages 저장소는 공개)
+*.xlsx
+*.xls
+*.csv
+*.json
+!.claude/launch.json
+.claude/
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
