@@ -119,6 +119,11 @@ function renderChrome() {
   VIEWS.forEach((v) => { $(`#view-${v}`).hidden = !(S.ready && S.user && v === S.view); });
   $('#fab').hidden = !(S.ready && S.user) || S.view === 'settings' || S.view === 'assets';
   $('#mode-badge').hidden = S.store?.mode !== 'demo';
+  // 로그인 전에는 사람·월 선택과 탭을 숨긴다
+  const signedIn = !!S.user;
+  $('#who-seg').hidden = !signedIn;
+  $('.month-nav').hidden = !signedIn;
+  $('#tabs').hidden = !signedIn;
 }
 
 function render() {

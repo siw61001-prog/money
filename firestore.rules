@@ -1,15 +1,15 @@
 rules_version = '2';
 
-// 가계부 데이터는 아래 목록의 Google 계정만 읽고 쓸 수 있다.
-// 두 사람의 Gmail 주소로 바꾼 뒤 Firebase 콘솔 > Firestore > 규칙 탭에 붙여넣고 '게시'하세요.
+// 가계부 데이터는 아래 두 Google 계정만 읽고 쓸 수 있다.
+// 바꾼 뒤에는 Firebase 콘솔 > Firestore > 규칙 탭에 붙여넣고 '게시'해야 적용된다.
 service cloud.firestore {
   match /databases/{database}/documents {
     function isMember() {
       return request.auth != null
         && request.auth.token.email_verified == true
         && request.auth.token.email in [
-          'INWON_EMAIL@gmail.com',
-          'HYEMI_EMAIL@gmail.com'
+          'siw61001@gmail.com',
+          'tiyddsx@gmail.com'
         ];
     }
 
