@@ -64,10 +64,8 @@ body::before {
 /* 와사비 베어: img/wasabi-bear.png 가 있을 때만 보인다 (없으면 기본 마크) */
 .mascot { display: block; object-fit: contain; flex: none; }
 .mascot-brand { width: 32px; height: 32px; }
-.mascot-login { width: 120px; height: 120px; }
-.mascot-peek { position: absolute; right: 6px; bottom: -4px; width: 52px; height: 52px; pointer-events: none; }
-.kpi.hero .k-label, .kpi.hero .k-value, .kpi.hero .k-foot { position: relative; z-index: 1; }
-.kpi.hero:has(.mascot-peek) .k-foot { padding-right: 48px; }
+.mascot-login { width: min(300px, 80vw); height: auto; }
+.mascot-group { width: min(240px, 100%); height: auto; margin: 18px auto 0; }
 .mode-badge {
   font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--warn);
   border: 1px solid currentColor; border-radius: 99px; padding: 1px 8px;
