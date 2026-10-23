@@ -197,7 +197,8 @@ function renderDashboard() {
       <div class="kpi"><div class="k-label">정기 저축</div><div class="k-value">${won(cur.saving)}</div>
         <div class="k-foot">고정비용 중 ${SAVING_CATS.join('·')}</div></div>
       <div class="kpi hero"><div class="k-label">실제 저축 · 저축률 ${pct(cur.rate)}</div><div class="k-value">${won(cur.saved)}</div>
-        <div class="k-foot">수입 − 고정비용 − 소비지출</div></div>
+        <div class="k-foot">수입 − 고정비용 − 소비지출</div>
+        <img class="mascot mascot-peek" src="img/wasabi-bear.png" alt="" onerror="this.remove()"></div>
     </div>
 
     <div class="grid">
