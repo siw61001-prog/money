@@ -1,5 +1,5 @@
 // 저장소 계층: Firebase(Firestore) 또는 데모(localStorage) 중 하나를 같은 인터페이스로 제공한다.
-import { firebaseConfig } from './firebase-config.js?v=20261026a';
+import { firebaseConfig } from './firebase-config.js?v=20261026b';
 
 export const MEMBERS = ['인원', '혜미'];
 
@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS = {
   budgets: { '인원': {}, '혜미': {} }, // 사람별 소비지출 분류 월 예산 { 분류: 금액 }
   subcategories: { '식비': ['마트', '배달음식', '외식', '편의점'] }, // 분류별 하위 분류
   budgetCounts: {}, // 목표 횟수 { '통합': { '식비|배달음식': 4 } }
+  budgetOrder: {}, // 목표 표시 순서 { '통합': ['식비|마트', '간식', …] } — 대시보드도 이 순서
 };
 
 const FB_VERSION = '10.12.2';
@@ -42,6 +43,7 @@ function mergeSettings(s) {
     budgets: { ...base.budgets, ...(s.budgets || {}) },
     subcategories: { ...base.subcategories, ...(s.subcategories || {}) },
     budgetCounts: { ...(s.budgetCounts || {}) },
+    budgetOrder: { ...(s.budgetOrder || {}) },
   };
 }
 

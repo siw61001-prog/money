@@ -298,11 +298,25 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 .count-input { display: flex; align-items: center; gap: 4px; }
 .count-input .input { text-align: right; padding-inline: 8px; }
 .count-input span { font-size: 13px; color: var(--muted); }
+/* 휴대폰: 한 항목을 두 줄로 (윗줄 이름·✕, 아랫줄 금액·횟수·평균) */
 @media (max-width: 720px) {
-  .budget-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 64px 30px; }
-  .budget-line .avg, .budget-line.head span:nth-child(4) { display: none; }
+  .budget-line.head { display: none; }
+  .budget-line {
+    grid-template-columns: minmax(0, 1fr) 76px auto;
+    grid-template-areas: "name name del" "amount count avg";
+    padding: 8px 0; border-top: 1px solid var(--line); row-gap: 6px;
+  }
+  .budget-line > .name { grid-area: name; }
+  .budget-line > .input { grid-area: amount; }
+  .budget-line > .count-input { grid-area: count; }
+  .budget-line > .avg { grid-area: avg; font-size: 11.5px; }
+  .budget-line > .icon-btn { grid-area: del; justify-self: end; }
 }
 .icon-btn.small { width: 30px; height: 30px; font-size: 14px; }
+.budget-line .name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.order-btns { display: inline-flex; flex-direction: column; flex: none; }
+.icon-btn.tiny { width: 22px; height: 15px; font-size: 9px; border-radius: 4px; line-height: 1; }
+.icon-btn.tiny:disabled { opacity: .25; cursor: default; background: none; }
 .budget-add { display: flex; gap: 8px; align-items: center; padding: 10px; border-radius: 12px; border: 1px dashed var(--line); }
 .budget-add select { flex: 1; min-width: 0; }
 

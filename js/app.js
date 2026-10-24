@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261026a';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261026a';
+import { createStore, MEMBERS } from './store.js?v=20261026b';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261026b';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -291,14 +291,20 @@ function countBadge(key) {
 function countGoalsLine() {
   const goals = Object.entries(householdCounts());
   if (!goals.length) return '';
-  return `<div class="count-goals"><span class="label">횟수 목표</span>${goals.sort(([a], [b]) => foodFirst(a) - foodFirst(b)).map(([k, g]) => {
+  return `<div class="count-goals"><span class="label">횟수 목표</span>${goals.sort(([a], [b]) => goalRank(a) - goalRank(b)).map(([k, g]) => {
     const used = unitCount(k, S.ym);
     return `<span class="pill ${countState(used, g)}">${esc(unitLabel(k))} ${used}/${g}회${used > g ? ` (${used - g}회 초과)` : ''}</span>`;
   }).join('')}</div>`;
 }
 
-// 식비(전체·하위 분류)를 항상 맨 위에
-const foodFirst = (key) => (key === '식비' || key.startsWith('식비|') ? 0 : 1);
+// 목표 순서: 설정에서 ▲▼로 정한 순서를 대시보드도 그대로 따른다.
+// 순서가 저장되지 않은 목표는 그 뒤에, 목표 없는 분류는 맨 뒤에 둔다.
+function goalOrder() {
+  const saved = ((S.settings.budgetOrder || {})[SHARED] || []).filter((k) => typeof k === 'string');
+  const all = [...Object.keys(householdBudget()), ...Object.keys(householdCounts())];
+  return [...new Set([...saved.filter((k) => all.includes(k)), ...all])];
+}
+const goalRank = (key) => { const i = goalOrder().indexOf(key); return i < 0 ? 9999 : i; };
 
 function statusRows(hhCats) {
   const budgets = householdBudget();
@@ -311,8 +317,7 @@ function statusRows(hhCats) {
     const s = unitSpent(spent, c);
     const b = budgets[c] || 0;
     return { c, spent: s, budget: b, state: b ? budgetState(s, b, prog.elapsed) : 'none' };
-  }).sort((a, b) => foodFirst(a.c) - foodFirst(b.c)
-    || (b.budget ? b.spent / b.budget : -1) - (a.budget ? a.spent / a.budget : -1) || b.spent - a.spent);
+  }).sort((a, b) => goalRank(a.c) - goalRank(b.c) || b.spent - a.spent);
 }
 
 function statusCard(hhCats, monthNo) {
@@ -687,7 +692,7 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
   const totalState = budgetState(totalSpent, totalBudget, prog.elapsed);
   const leftMoney = totalBudget - totalSpent;
   const rows = budgeted.map((c) => ({ c, spent: spentFor(c), budget: budgets[c] }))
-    .sort((a, b) => foodFirst(a.c) - foodFirst(b.c) || b.spent / b.budget - a.spent / a.budget);
+    .sort((a, b) => goalRank(a.c) - goalRank(b.c));
   // 예산 없는 단위 (상위 분류 전체에 예산이 있으면 그 하위 분류는 이미 포함된 것으로 본다)
   const extra = cats.filter(([c]) => !budgets[c] && !(c.includes('|') && budgets[c.split('|')[0]]));
   const message = !prog.current ? (leftMoney >= 0 ? `예산보다 ${won(leftMoney)} 덜 썼어요` : `예산을 ${won(-leftMoney)} 넘었어요`)
@@ -1356,7 +1361,7 @@ function renderSettings() {
   if (!S.budgetDraft) {
     const amounts = householdBudget();
     const counts = householdCounts();
-    S.budgetDraft = [...new Set([...Object.keys(amounts), ...Object.keys(counts)])]
+    S.budgetDraft = goalOrder()
       .map((k) => [k, amounts[k] ? fmt(amounts[k]) : '', counts[k] ? String(counts[k]) : '']);
   }
   const draftKeys = new Set(S.budgetDraft.map(([k]) => k));
@@ -1370,10 +1375,14 @@ function renderSettings() {
           <p class="hint">목표를 정하고 싶은 항목만 추가하세요. 식비는 전체 또는 마트·배달음식 같은 하위 분류별로 정할 수 있어요. 횟수는 한 달에 몇 번까지 쓸지예요(비우면 횟수 목표 없음). 회색 숫자는 두 사람 합산 지난 3달 평균이에요.</p>
           ${S.budgetDraft.length ? `<div class="budget-grid">
             <div class="budget-line head"><span>항목</span><span>금액</span><span>횟수</span><span>지난 3달 평균</span><span></span></div>
-            ${S.budgetDraft.map(([k, v, n]) => {
+            ${S.budgetDraft.map(([k, v, n], idx) => {
             const avg = avgSpend('all', k, thisYm);
             const avgN = avgCount(k, thisYm);
-            return `<div class="budget-line"><span class="name">${esc(unitLabel(k))}</span>
+            return `<div class="budget-line"><span class="name">
+                <span class="order-btns">
+                  <button type="button" class="icon-btn tiny" data-budget-move="${esc(k)}" data-dir="-1" ${idx === 0 ? 'disabled' : ''} aria-label="${esc(unitLabel(k))} 위로">▲</button>
+                  <button type="button" class="icon-btn tiny" data-budget-move="${esc(k)}" data-dir="1" ${idx === S.budgetDraft.length - 1 ? 'disabled' : ''} aria-label="${esc(unitLabel(k))} 아래로">▼</button>
+                </span>${esc(unitLabel(k))}</span>
               <input class="input" data-budget-cat="${esc(k)}" inputmode="numeric" placeholder="금액" value="${esc(v)}" aria-label="${esc(unitLabel(k))} 목표 금액">
               <span class="count-input"><input class="input" data-budget-count="${esc(k)}" inputmode="numeric" placeholder="–" value="${esc(n || '')}" aria-label="${esc(unitLabel(k))} 목표 횟수"><span>회</span></span>
               <span class="avg" data-avg="${Math.round(avg / 10000) * 10000}" data-avg-count="${Math.round(avgN)}">${avg ? `${shortWon(avg)} · ${Math.round(avgN * 10) / 10}회` : ''}</span>
@@ -2224,6 +2233,9 @@ function bind() {
       // 통합 예산만 남기고 예전 사람별 예산은 지운다. 목록에서 지운 항목은 목표에서도 빠진다.
       st.budgets = { [SHARED]: mine };
       st.budgetCounts = { [SHARED]: counts };
+      // 설정 화면의 줄 순서가 대시보드 표시 순서가 된다
+      st.budgetOrder = { [SHARED]: $$('[data-budget-cat]', e.target).map((i) => i.dataset.budgetCat)
+        .filter((k) => mine[k] || counts[k]) };
       S.budgetDraft = null;
       const n = new Set([...Object.keys(mine), ...Object.keys(counts)]).size;
       await S.store.saveSettings(st); toast(`목표 ${n}개를 저장했습니다`);
@@ -2274,6 +2286,18 @@ function bind() {
       S.budgetDraft.push([key, avg ? fmt(avg) : '', '']);
       renderSettings();
       $(`[data-budget-cat="${CSS.escape(key)}"]`)?.focus();
+      return;
+    }
+    const mv = e.target.closest('[data-budget-move]');
+    if (mv) {
+      syncBudgetDraft();
+      const i = S.budgetDraft.findIndex(([k]) => k === mv.dataset.budgetMove);
+      const j = i + Number(mv.dataset.dir);
+      if (i >= 0 && j >= 0 && j < S.budgetDraft.length) {
+        [S.budgetDraft[i], S.budgetDraft[j]] = [S.budgetDraft[j], S.budgetDraft[i]];
+        renderSettings();
+        $(`[data-budget-move="${CSS.escape(mv.dataset.budgetMove)}"][data-dir="${mv.dataset.dir}"]`)?.focus();
+      }
       return;
     }
     const del = e.target.closest('[data-budget-del]');
