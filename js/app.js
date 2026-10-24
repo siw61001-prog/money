@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261024d';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261024d';
+import { createStore, MEMBERS } from './store.js?v=20261024e';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261024e';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -284,16 +284,15 @@ function threeMonthCard(list) {
     const open = S.openThree.has(c);
     let body = '';
     if (open) {
-      body = `<div class="cat-tx-months">${[...ms].reverse().map((m) => {
-        const items = list.filter((t) => t.type === 'variable' && t.category === c && t.date.startsWith(m))
-          .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount);
-        if (!items.length) return '';
-        return `<div class="cat-month"><div class="cat-month-head"><span>${Number(m.slice(5))}월</span><span>${items.length}건 · ${won(items.reduce((a, t) => a + t.amount, 0))}</span></div>
-          <ul class="cat-tx">${items.map((t) => `<li><button type="button" data-edit-tx="${esc(t.id)}">
-            <span class="when">${dayLabel(t.date).replace(/^\d+월 /, '')}</span>
-            <span class="what">${esc(t.memo || t.category)}<small>${[S.who === 'all' ? t.owner : '', t.method].filter(Boolean).map(esc).join(' · ')}</small></span>
-            <span class="amt">${fmt(t.amount)}</span></button></li>`).join('')}</ul></div>`;
-      }).join('')}</div>`;
+      // 식비·간식은 세부 분류(배달·외식…)별, 그 밖의 분류는 달별로 묶는다
+      const items = list.filter((t) => t.type === 'variable' && t.category === c && ms.includes(t.date.slice(0, 7)));
+      body = txGroups(c, items, {
+        withMonth: true,
+        fallback: (sorted, group) => `<div class="cat-tx-months">${[...ms].reverse().map((m) => {
+          const l = sorted.filter((t) => t.date.startsWith(m));
+          return l.length ? group(`${Number(m.slice(5))}월`, l) : '';
+        }).join('')}</div>`,
+      });
     }
     return `<div class="cat-item${open ? ' open' : ''}">
       <button type="button" class="bar-row cat-toggle" data-three-cat="${esc(c)}" aria-expanded="${open}"><span class="name">${esc(c)}</span>
@@ -388,18 +387,60 @@ function avgSpend(who, cat, endYm, n = 3) {
 }
 
 // 분류 줄을 누르면 그 달 그 분류의 내역(언제·무엇·얼마)이 아래로 펼쳐진다
+/* ---------- 세부 분류 ---------- */
+// 식비·간식은 가게 이름으로 세부 분류를 나눠 펼친 목록에서 묶어 보여준다. 위에서부터 먼저 맞는 것, 마지막은 나머지 전부.
+const SUB_RULES = {
+  '식비': [
+    ['배달', ['배민', '배달의민족', '쿠팡이츠', '요기요', '땡겨요', '배달', '야식', '치킨', '피자']],
+    ['장보기', ['이마트', '홈플러스', '롯데마트', '코스트코', '트레이더스', '하나로', '이지바이', '마트', '정육', '식자재', '농협', '쿠팡', '컬리']],
+    ['외식', null],
+  ],
+  '간식': [
+    ['편의점', ['편의점', 'GS25', '지에스25', 'CU', '씨유', '세븐일레븐', '이마트24', '미니스톱']],
+    ['카페·디저트', null],
+  ],
+};
+SUB_RULES['카페/간식'] = SUB_RULES['간식'];
+
+function subOf(t) {
+  const rules = SUB_RULES[t.category];
+  if (!rules) return '';
+  const m = normMemo(t.memo);
+  // '쿠팡이츠'가 '쿠팡'(장보기)에 먼저 걸리지 않도록 배달을 먼저 본다
+  const hit = rules.find(([, words]) => words && words.some((w) => m.includes(normMemo(w))));
+  return hit ? hit[0] : rules.at(-1)[0];
+}
+
+const txLine = (t, withMonth) => `<li><button type="button" data-edit-tx="${esc(t.id)}">
+  <span class="when">${withMonth ? `${Number(t.date.slice(5, 7))}/${Number(t.date.slice(8))} (${WEEK[new Date(`${t.date}T00:00:00`).getDay()]})`
+    : dayLabel(t.date).replace(/^\d+월 /, '')}</span>
+  <span class="what">${esc(t.memo || t.category)}<small>${[S.who === 'all' ? t.owner : '', t.method].filter(Boolean).map(esc).join(' · ')}</small></span>
+  <span class="amt">${fmt(t.amount)}</span></button></li>`;
+
+// 펼친 내역: 세부 분류가 있는 분류는 세부 분류별로, 없으면 fallback(달별 등) 또는 한 목록으로 보여준다
+function txGroups(cat, items, { withMonth = false, fallback = null } = {}) {
+  const sorted = [...items].sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount);
+  const group = (title, list) => `<div class="cat-month"><div class="cat-month-head"><span>${esc(title)}</span>
+    <span>${list.length}건 · ${won(list.reduce((a, t) => a + t.amount, 0))}</span></div>
+    <ul class="cat-tx">${list.map((t) => txLine(t, withMonth)).join('')}</ul></div>`;
+  if (SUB_RULES[cat]) {
+    const order = SUB_RULES[cat].map(([name]) => name);
+    const by = new Map(order.map((n) => [n, []]));
+    sorted.forEach((t) => by.get(subOf(t)).push(t));
+    return `<div class="cat-tx-months">${[...by.entries()].filter(([, l]) => l.length)
+      .sort((a, b) => b[1].reduce((s, t) => s + t.amount, 0) - a[1].reduce((s, t) => s + t.amount, 0))
+      .map(([n, l]) => group(n, l)).join('')}</div>`;
+  }
+  if (fallback) return fallback(sorted, group);
+  return `<ul class="cat-tx">${sorted.map((t) => txLine(t, withMonth)).join('')}</ul>`;
+}
+
 function catItem(cat, rowInner, monthTx) {
   const open = S.openCats.has(cat);
-  const items = open ? monthTx.filter((t) => t.type === 'variable' && t.category === cat)
-    .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount) : [];
+  const items = open ? monthTx.filter((t) => t.type === 'variable' && t.category === cat) : [];
   return `<div class="cat-item${open ? ' open' : ''}">
     <button type="button" class="bar-row cat-toggle" data-cat="${esc(cat)}" aria-expanded="${open}">${rowInner}</button>
-    ${open ? `<ul class="cat-tx">${items.length ? items.map((t) => `
-      <li><button type="button" data-edit-tx="${esc(t.id)}">
-        <span class="when">${dayLabel(t.date).replace(/^\d+월 /, '')}</span>
-        <span class="what">${esc(t.memo || t.category)}<small>${[S.who === 'all' ? t.owner : '', t.method].filter(Boolean).map(esc).join(' · ')}</small></span>
-        <span class="amt">${fmt(t.amount)}</span></button></li>`).join('')
-      : '<li class="none">이번 달 이 분류 지출이 없어요.</li>'}</ul>` : ''}
+    ${open ? (items.length ? txGroups(cat, items) : '<ul class="cat-tx"><li class="none">이번 달 이 분류 지출이 없어요.</li></ul>') : ''}
   </div>`;
 }
 
