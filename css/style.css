@@ -181,6 +181,30 @@ td.left, th.left { text-align: left; }
 }
 .day-head + .tx-row { border-top: 0; }
 .tx-row:hover { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+
+/* 선택 체크박스와 선택 막대 */
+.tx-line { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; border-top: 1px solid var(--line); }
+.day-head + .tx-line { border-top: 0; }
+.tx-line .tx-row { border-top: 0; padding-left: 10px; }
+.tx-line.selected { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.tx-check { display: grid; place-items: center; padding: 0 2px 0 14px; align-self: stretch; cursor: pointer; }
+.tx-check input, .day-check input, .check-all input { width: 17px; height: 17px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+.day-check { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
+.day-group .day-head { padding-left: 14px; }
+.check-all { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 600; cursor: pointer; }
+.sel-bar {
+  position: sticky; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 22;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap;
+  padding: 12px 16px; border-radius: 16px; background: var(--ink); color: var(--bg);
+  box-shadow: 0 10px 30px rgba(40, 30, 10, .25);
+}
+.sel-info { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.sel-info span { opacity: .75; font-size: 13.5px; }
+.sel-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.sel-bar .btn { background: color-mix(in srgb, var(--bg) 12%, transparent); border-color: transparent; color: var(--bg); }
+.sel-bar .btn.danger { background: var(--expense); color: #fff; }
+@media (max-width: 720px) { .sel-bar { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); } }
+.chips .keep { border-style: dashed; color: var(--muted); }
 .tx-row .memo { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tx-row .meta { color: var(--muted); font-size: 12.5px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .tx-row .amt { font-weight: 700; text-align: right; white-space: nowrap; }

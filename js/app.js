@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261025b';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025b';
+import { createStore, MEMBERS } from './store.js?v=20261025c';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025c';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -34,6 +34,8 @@ const S = {
   budgetWho: '',
   openCats: new Set(), // 대시보드에서 펼쳐 둔 분류
   openThree: new Set(), // 최근 3개월 카드에서 펼쳐 둔 분류
+  sel: new Set(), // 내역 화면에서 체크한 내역 id
+  selDeleteArmed: false,
   threeAll: false, // 최근 3개월 카드에서 모든 분류 보기
   mergeFrom: new Set(), // 분류 합치기에서 고른 분류
   mergeTo: '',
@@ -574,6 +576,10 @@ function renderList() {
   }
   list.sort((a, b) => b.date.localeCompare(a.date) || (b.id || '').localeCompare(a.id || ''));
   const filteredSum = list.reduce((a, t) => a + t.amount, 0);
+  // 선택은 지금 보이는 내역 안에서만 유지한다 (월·필터를 바꾸면 안 보이는 선택은 풀린다)
+  const visibleIds = new Set(list.map((t) => t.id));
+  S.sel = new Set([...S.sel].filter((id) => visibleIds.has(id)));
+  const allSelected = list.length > 0 && list.every((t) => S.sel.has(t.id));
   const catSet = f.type === 'all'
     ? [...new Set([...categoryOptions('variable'), ...categoryOptions('fixed'), ...categoryOptions('income')])]
     : categoryOptions(f.type);
@@ -612,6 +618,7 @@ function renderList() {
         <input class="input grow" id="q-filter" type="search" placeholder="메모·분류 검색" value="${esc(f.q)}" aria-label="검색">
       </div>
       <div class="summary-line" style="margin-top:12px">
+        ${list.length ? `<label class="check-all"><input type="checkbox" id="sel-all" ${allSelected ? 'checked' : ''}> 전체 선택</label>` : ''}
         <span>${ymLabel(S.ym)} · ${esc(S.who === 'all' ? '통합' : S.who)}</span>
         <span>수입 <b class="c-income">${fmt(all.income)}</b></span>
         <span>고정 <b>${fmt(all.fixed + all.saving)}</b></span>
@@ -627,17 +634,129 @@ function renderList() {
     ${groups.length ? groups.map((g) => {
       const out = g.items.filter((t) => t.type !== 'income').reduce((a, t) => a + t.amount, 0);
       return `<div class="day-group">
-        <div class="day-head"><span>${dayLabel(g.date)}</span><span>${out ? `지출 ${fmt(out)}` : ''}</span></div>
+        <div class="day-head"><label class="day-check"><input type="checkbox" data-sel-day="${g.date}"
+          ${g.items.every((t) => S.sel.has(t.id)) ? 'checked' : ''} aria-label="${dayLabel(g.date)} 전체 선택"><span>${dayLabel(g.date)}</span></label>
+          <span>${out ? `지출 ${fmt(out)}` : ''}</span></div>
         ${g.items.map((t) => `
+          <div class="tx-line${S.sel.has(t.id) ? ' selected' : ''}">
+          <label class="tx-check"><input type="checkbox" data-sel="${esc(t.id)}" ${S.sel.has(t.id) ? 'checked' : ''} aria-label="선택"></label>
           <button type="button" class="tx-row" data-id="${esc(t.id)}">
             <span class="pill ${t.type === 'income' ? 'income' : isSaving(t) ? 'saving' : t.type === 'fixed' ? 'fixed' : ''}">${esc(t.category)}${subOf(t) ? ` · ${esc(subOf(t))}` : ''}</span>
             <span class="left-col"><span class="memo">${esc(t.memo || t.category)}</span>
               <span class="meta">${S.who === 'all' ? `<span><span class="dot" style="background:${memberColor(t.owner)}"></span> ${esc(t.owner)}</span>` : ''}
                 <span>${TYPE_LABEL[t.type]}</span>${t.method ? `<span>${esc(t.method)}</span>` : ''}</span></span>
             <span class="amt ${t.type === 'income' ? 'c-income' : ''}">${t.type === 'income' ? '+' : '−'}${fmt(t.amount)}</span>
-          </button>`).join('')}
+          </button></div>`).join('')}
       </div>`;
-    }).join('') : `<div class="card"><p class="empty">${ymLabel(S.ym)}에 조건에 맞는 내역이 없습니다.</p></div>`}`;
+    }).join('') : `<div class="card"><p class="empty">${ymLabel(S.ym)}에 조건에 맞는 내역이 없습니다.</p></div>`}
+    ${selectionBar()}`;
+  $('#fab').hidden = S.sel.size > 0; // 선택 막대와 겹치지 않게 입력 버튼을 잠시 숨긴다
+}
+
+/* ---------- 내역 선택 · 일괄 삭제 · 일괄 수정 ---------- */
+const selectedTx = () => S.tx.filter((t) => S.sel.has(t.id));
+
+function selectionBar() {
+  if (!S.sel.size) return '';
+  const items = selectedTx();
+  const out = items.filter((t) => t.type !== 'income').reduce((a, t) => a + t.amount, 0);
+  const inc = items.filter((t) => t.type === 'income').reduce((a, t) => a + t.amount, 0);
+  return `<div class="sel-bar" role="region" aria-label="선택한 내역">
+    <div class="sel-info"><b>${items.length}건 선택</b>
+      <span>${out ? `지출 ${fmt(out)}원` : ''}${out && inc ? ' · ' : ''}${inc ? `수입 ${fmt(inc)}원` : ''}</span></div>
+    <div class="sel-actions">
+      <button type="button" class="btn small ghost" id="sel-clear">선택 해제</button>
+      <button type="button" class="btn small" id="sel-edit">일괄 수정</button>
+      <button type="button" class="btn small danger" id="sel-delete">${S.selDeleteArmed ? `한 번 더 누르면 ${items.length}건 삭제` : '삭제'}</button>
+    </div>
+  </div>`;
+}
+
+function refreshSelection() {
+  S.selDeleteArmed = false;
+  const y = window.scrollY;
+  renderList();
+  window.scrollTo(0, y);
+}
+
+async function deleteSelected() {
+  const ids = [...S.sel];
+  await S.store.bulk({ deleteTx: ids });
+  S.sel = new Set(); S.selDeleteArmed = false;
+  toast(`${ids.length}건을 삭제했습니다`);
+}
+
+// 일괄 수정: '그대로'인 항목은 건드리지 않고, 고른 항목만 선택한 내역 모두에 적용한다
+const bulk = { owner: '', type: '', category: '', sub: '', method: '', date: '' };
+const KEEP = '';
+
+function bulkTypes() {
+  return bulk.type ? [bulk.type] : [...new Set(selectedTx().map((t) => t.type))];
+}
+
+function renderBulk() {
+  const seg = (id, options, value) => `<div class="seg" id="${id}">${options.map(([v, l]) =>
+    `<button type="button" data-v="${esc(v)}" aria-pressed="${value === v}">${esc(l)}</button>`).join('')}</div>`;
+  const chips = (id, options, value) => `<div class="chips" id="${id}">
+    <button type="button" data-v="" aria-pressed="${value === KEEP}" class="keep">그대로</button>
+    ${options.map((c) => `<button type="button" data-v="${esc(c)}" aria-pressed="${value === c}">${esc(c)}</button>`).join('')}</div>`;
+  const types = bulkTypes();
+  const catOptions = [...new Set(types.flatMap((ty) => categoryOptions(ty)))];
+  if (bulk.category && !catOptions.includes(bulk.category)) bulk.category = '';
+  const subs = bulk.category ? subList(bulk.category) : (types.length === 1 && types[0] === 'variable' && selectedTx().every((t) => t.category === '식비') ? subList('식비') : []);
+  if (bulk.sub && !subs.includes(bulk.sub)) bulk.sub = '';
+  const methods = types.includes('income') && types.length === 1 ? [] : [...new Set(types.filter((ty) => ty !== 'income').flatMap((ty) => methodOptions(ty)))];
+  $('#bulk-body').innerHTML = `
+    <p class="hint">${S.sel.size}건에 적용해요. ‘그대로’인 항목은 바뀌지 않아요.</p>
+    <div class="field"><span class="label">누구</span>${seg('bulk-owner', [[KEEP, '그대로'], ...MEMBERS.map((m) => [m, m])], bulk.owner)}</div>
+    <div class="field"><span class="label">구분</span>${seg('bulk-type', [[KEEP, '그대로'], ['variable', '소비지출'], ['fixed', '고정비용'], ['income', '수입']], bulk.type)}</div>
+    <div class="field"><span class="label">분류</span>${chips('bulk-category', catOptions, bulk.category)}
+      ${bulk.type && !bulk.category && selectedTx().some((t) => !categoryOptions(bulk.type).includes(t.category))
+        ? '<span class="hint c-expense">구분을 바꾸면 분류도 같이 골라 주세요.</span>' : ''}</div>
+    ${subs.length ? `<div class="field"><span class="label">식비 하위 분류</span>${chips('bulk-sub', subs, bulk.sub)}</div>` : ''}
+    ${methods.length ? `<div class="field"><span class="label">결제 수단</span>${chips('bulk-method', methods, bulk.method)}</div>` : ''}
+    <label class="field"><span class="label">날짜 (비우면 그대로)</span><input type="date" class="input" id="bulk-date" value="${esc(bulk.date)}"></label>
+    <p class="error" id="bulk-error" hidden></p>`;
+}
+
+function openBulk() {
+  Object.assign(bulk, { owner: '', type: '', category: '', sub: '', method: '', date: '' });
+  renderBulk();
+  $('#bulk-dialog').showModal();
+}
+
+async function applyBulk() {
+  const err = $('#bulk-error');
+  const items = selectedTx();
+  if (bulk.type && !bulk.category && items.some((t) => !categoryOptions(bulk.type).includes(t.category))) {
+    err.textContent = '구분을 바꿀 때는 분류도 골라 주세요.'; err.hidden = false; return;
+  }
+  const updateTx = items.map((t) => {
+    const d = {};
+    if (bulk.owner) d.owner = bulk.owner;
+    if (bulk.type) d.type = bulk.type;
+    if (bulk.category) d.category = bulk.category;
+    if (bulk.date) d.date = bulk.date;
+    const type = d.type || t.type;
+    const cat = d.category || t.category;
+    if (type === 'income') d.method = '';
+    else if (bulk.method) d.method = bulk.method;
+    // 하위 분류: 직접 골랐으면 그것, 분류가 바뀌면 새 분류 기준으로 다시 추정, 하위 분류 없는 분류면 비움
+    if (type === 'variable' && subList(cat).length) {
+      if (bulk.sub) d.sub = bulk.sub;
+      else if (d.category || d.type) d.sub = guessSub(cat, t.memo);
+    } else if (t.sub) d.sub = '';
+    return { id: t.id, data: d };
+  }).filter((u) => Object.keys(u.data).length);
+  if (!updateTx.length) { err.textContent = '바꿀 항목을 하나 이상 골라 주세요.'; err.hidden = false; return; }
+  try {
+    await S.store.bulk({ updateTx });
+  } catch (e) {
+    err.textContent = `수정하지 못했습니다: ${e.message}`; err.hidden = false; return;
+  }
+  $('#bulk-dialog').close();
+  S.sel = new Set();
+  toast(`${updateTx.length}건을 수정했습니다`);
 }
 
 async function copyFixedFromPrev() {
@@ -1737,6 +1856,13 @@ function bind() {
     if (tb) { S.filter.type = tb.dataset.v; S.filter.cat = ''; renderList(); return; }
     if (e.target.closest('#copy-fixed')) copyFixedFromPrev();
     if (e.target.closest('#open-upload')) openUpload();
+    if (e.target.closest('#sel-clear')) { S.sel = new Set(); refreshSelection(); return; }
+    if (e.target.closest('#sel-edit')) { openBulk(); return; }
+    if (e.target.closest('#sel-delete')) {
+      if (!S.selDeleteArmed) { S.selDeleteArmed = true; $('#sel-delete').textContent = `한 번 더 누르면 ${S.sel.size}건 삭제`; return; }
+      deleteSelected().catch((err) => toast(`삭제하지 못했습니다: ${err.message}`));
+      return;
+    }
     const ra = e.target.closest('[data-recur-apply]');
     if (ra) moveRecurringToFixed(recurringSuggestions().filter((g) => g.key === ra.dataset.recurApply));
     if (e.target.closest('[data-recur-all]')) moveRecurringToFixed(recurringSuggestions());
@@ -1744,7 +1870,17 @@ function bind() {
     if (ri) ignoreRecurring(ri.dataset.recurIgnore);
   });
   $('#view-list').addEventListener('change', (e) => {
-    if (e.target.id === 'cat-filter') { S.filter.cat = e.target.value; renderList(); }
+    if (e.target.id === 'cat-filter') { S.filter.cat = e.target.value; renderList(); return; }
+    // 체크박스: 한 줄 / 그날 전체 / 보이는 내역 전체
+    const t = e.target;
+    if (t.dataset.sel) { if (t.checked) S.sel.add(t.dataset.sel); else S.sel.delete(t.dataset.sel); refreshSelection(); return; }
+    if (t.dataset.selDay || t.id === 'sel-all') {
+      const ids = t.id === 'sel-all'
+        ? $$('[data-sel]', $('#view-list')).map((i) => i.dataset.sel)
+        : $$('[data-sel]', t.closest('.day-group')).map((i) => i.dataset.sel);
+      ids.forEach((id) => (t.checked ? S.sel.add(id) : S.sel.delete(id)));
+      refreshSelection();
+    }
   });
   $('#view-list').addEventListener('input', (e) => {
     if (e.target.id !== 'q-filter') return;
@@ -1908,6 +2044,22 @@ function bind() {
   $('#tx-delete').onclick = (e) => armDelete(e.currentTarget, async () => {
     await S.store.deleteTx(form.id); dlg.close(); toast('삭제했습니다');
   });
+
+  // 일괄 수정
+  const bdlg = $('#bulk-dialog');
+  bdlg.addEventListener('click', (e) => {
+    if (e.target === bdlg || e.target.closest('[data-close]')) { bdlg.close(); return; }
+    const b = e.target.closest('#bulk-body button[data-v]');
+    if (!b) return;
+    const key = { 'bulk-owner': 'owner', 'bulk-type': 'type', 'bulk-category': 'category', 'bulk-sub': 'sub', 'bulk-method': 'method' }[b.parentElement.id];
+    if (!key) return;
+    bulk[key] = b.dataset.v;
+    if (key === 'type') { bulk.category = ''; bulk.method = ''; }
+    if (key === 'category') bulk.sub = '';
+    renderBulk();
+  });
+  bdlg.addEventListener('change', (e) => { if (e.target.id === 'bulk-date') bulk.date = e.target.value; });
+  $('#bulk-form').addEventListener('submit', (e) => { e.preventDefault(); applyBulk(); });
 
   // 일괄 등록
   const udlg = $('#upload-dialog');

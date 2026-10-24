@@ -9,9 +9,9 @@
   <link rel="icon" type="image/png" href="img/wasabi-head.png">
   <link rel="apple-touch-icon" href="img/wasabi-head.png">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="css/style.css?v=20261025b">
+  <link rel="stylesheet" href="css/style.css?v=20261025c">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script type="module" src="js/app.js?v=20261025b"></script>
+  <script type="module" src="js/app.js?v=20261025c"></script>
 </head>
 <body>
   <header class="topbar">
@@ -161,6 +161,21 @@
       </ol>
       <div id="upload-preview"></div>
     </div>
+  </dialog>
+
+  <dialog id="bulk-dialog" class="sheet" aria-labelledby="bulk-title">
+    <form id="bulk-form" method="dialog" novalidate>
+      <div class="sheet-head">
+        <h2 id="bulk-title">선택한 내역 일괄 수정</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
+      </div>
+      <div id="bulk-body" class="form-stack"></div>
+      <div class="sheet-actions">
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>취소</button>
+        <button type="submit" class="btn primary">적용</button>
+      </div>
+    </form>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
