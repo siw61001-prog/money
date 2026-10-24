@@ -9,9 +9,9 @@
   <link rel="icon" type="image/png" href="img/wasabi-head.png">
   <link rel="apple-touch-icon" href="img/wasabi-head.png">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="css/style.css?v=20261024f">
+  <link rel="stylesheet" href="css/style.css?v=20261025a">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script type="module" src="js/app.js?v=20261024f"></script>
+  <script type="module" src="js/app.js?v=20261025a"></script>
 </head>
 <body>
   <header class="topbar">
@@ -85,6 +85,10 @@
       <div class="field">
         <span class="label">분류</span>
         <div class="chips" id="tx-category"></div>
+        <div class="sub-pick" id="tx-sub-field" hidden>
+          <span class="label">하위 분류</span>
+          <div class="chips small" id="tx-sub"></div>
+        </div>
         <p class="hint budget-hint" id="tx-budget" hidden></p>
       </div>
       <div class="field" id="tx-method-field">

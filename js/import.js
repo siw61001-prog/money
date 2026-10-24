@@ -226,6 +226,9 @@ const CARD_COLS = {
 };
 
 // 개인 내역표에서 쓰던 분류 이름을 가계부 분류로 맞춘다 (없는 이름은 그대로 둔다)
+// 개인 내역표의 원래 분류 이름으로 식비 하위 분류를 정한다 (마트장 → 식비·마트 등)
+const SUB_ALIASES = { '마트장': '마트', '마트': '마트', '장보기': '마트', '배달음식': '배달음식', '배달': '배달음식', '외식': '외식', '편의점': '편의점' };
+
 const CATEGORY_ALIASES = {
   '마트장': '식비', '마트': '식비', '장보기': '식비', '배달음식': '식비', '배달': '식비', '외식': '식비', '화장품': '미용',
   '옷/쇼핑': '쇼핑', '옷': '쇼핑', '구독료': '통신/구독', '구독': '통신/구독', '병원': '의료/건강', '편의점': '식비', '카페': '간식', '카페/간식': '간식',
@@ -280,7 +283,7 @@ function parseCardSheet(XLSX, wb, { defaultOwner, year, classify }) {
       const ownMethod = c.method >= 0 ? str(r[c.method]) : '';
       rows.push({
         line, sheet: name, owner: defaultOwner, type: guess.type || 'variable', date, amount, memo,
-        category: guess.category, guessed: guess.source,
+        category: guess.category, guessed: guess.source, sub: SUB_ALIASES[ownCat] || '',
         method: ownMethod || (/체크/.test(cardName) ? '체크카드' : '신용카드'),
       });
     });

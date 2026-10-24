@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261024f';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261024f';
+import { createStore, MEMBERS } from './store.js?v=20261025a';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025a';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -393,22 +393,31 @@ function avgSpend(who, cat, endYm, n = 3) {
 const CONVENIENCE = ['편의점', 'GS25', '지에스25', 'CU', '씨유', '세븐일레븐', '이마트24', 'EMART24', '미니스톱'];
 const isConvenience = (memo) => { const m = normMemo(memo); return CONVENIENCE.some((w) => m.includes(normMemo(w))); };
 
-const SUB_RULES = {
-  '식비': [
-    ['배달', ['배민', '배달의민족', '쿠팡이츠', '요기요', '땡겨요', '배달', '야식', '치킨', '피자']],
-    ['편의점', CONVENIENCE], // '이마트24'가 장보기(이마트)에 걸리지 않게 먼저 본다
-    ['장보기', ['이마트', '홈플러스', '롯데마트', '코스트코', '트레이더스', '하나로', '이지바이', '마트', '정육', '식자재', '농협', '쿠팡', '컬리']],
-    ['외식', null],
-  ],
-};
+/* ---------- 식비 하위 분류 ---------- */
+// 하위 분류는 내역의 sub 필드에 저장한다. 목록은 설정(subcategories)에서 바꿀 수 있고,
+// 비어 있는 내역은 가게 이름으로 추정한다. 위에서부터 먼저 맞는 규칙, 나머지는 '외식'.
+const SUB_KEYWORDS = [
+  ['배달음식', ['배민', '배달의민족', '쿠팡이츠', '요기요', '땡겨요', '배달', '야식', '치킨', '피자']],
+  ['편의점', CONVENIENCE], // '이마트24'가 마트(이마트)에 걸리지 않게 먼저 본다
+  ['마트', ['이마트', '홈플러스', '롯데마트', '코스트코', '트레이더스', '하나로', '이지바이', '마트', '정육', '식자재', '농협', '쿠팡', '컬리']],
+];
+const subList = (cat) => (S.settings?.subcategories || {})[cat] || [];
 
+function guessSub(cat, memo) {
+  const list = subList(cat);
+  if (!list.length) return '';
+  const m = normMemo(memo);
+  // '쿠팡이츠'가 '쿠팡'(마트)에 먼저 걸리지 않도록 배달음식을 먼저 본다
+  const hit = SUB_KEYWORDS.find(([name, words]) => list.includes(name) && words.some((w) => m.includes(normMemo(w))));
+  if (hit) return hit[0];
+  return list.includes('외식') ? '외식' : list.at(-1);
+}
+
+// 저장된 하위 분류가 목록에 있으면 그것, 없으면 추정
 function subOf(t) {
-  const rules = SUB_RULES[t.category];
-  if (!rules) return '';
-  const m = normMemo(t.memo);
-  // '쿠팡이츠'가 '쿠팡'(장보기)에 먼저 걸리지 않도록 배달을 먼저 본다
-  const hit = rules.find(([, words]) => words && words.some((w) => m.includes(normMemo(w))));
-  return hit ? hit[0] : rules.at(-1)[0];
+  const list = subList(t.category);
+  if (!list.length) return '';
+  return t.sub && list.includes(t.sub) ? t.sub : guessSub(t.category, t.memo);
 }
 
 const txLine = (t, withMonth) => `<li><button type="button" data-edit-tx="${esc(t.id)}">
@@ -423,9 +432,8 @@ function txGroups(cat, items, { withMonth = false, fallback = null } = {}) {
   const group = (title, list) => `<div class="cat-month"><div class="cat-month-head"><span>${esc(title)}</span>
     <span>${list.length}건 · ${won(list.reduce((a, t) => a + t.amount, 0))}</span></div>
     <ul class="cat-tx">${list.map((t) => txLine(t, withMonth)).join('')}</ul></div>`;
-  if (SUB_RULES[cat]) {
-    const order = SUB_RULES[cat].map(([name]) => name);
-    const by = new Map(order.map((n) => [n, []]));
+  if (subList(cat).length) {
+    const by = new Map(subList(cat).map((n) => [n, []]));
     sorted.forEach((t) => by.get(subOf(t)).push(t));
     return `<div class="cat-tx-months">${[...by.entries()].filter(([, l]) => l.length)
       .sort((a, b) => b[1].reduce((s, t) => s + t.amount, 0) - a[1].reduce((s, t) => s + t.amount, 0))
@@ -622,7 +630,7 @@ function renderList() {
         <div class="day-head"><span>${dayLabel(g.date)}</span><span>${out ? `지출 ${fmt(out)}` : ''}</span></div>
         ${g.items.map((t) => `
           <button type="button" class="tx-row" data-id="${esc(t.id)}">
-            <span class="pill ${t.type === 'income' ? 'income' : isSaving(t) ? 'saving' : t.type === 'fixed' ? 'fixed' : ''}">${esc(t.category)}</span>
+            <span class="pill ${t.type === 'income' ? 'income' : isSaving(t) ? 'saving' : t.type === 'fixed' ? 'fixed' : ''}">${esc(t.category)}${subOf(t) ? ` · ${esc(subOf(t))}` : ''}</span>
             <span class="left-col"><span class="memo">${esc(t.memo || t.category)}</span>
               <span class="meta">${S.who === 'all' ? `<span><span class="dot" style="background:${memberColor(t.owner)}"></span> ${esc(t.owner)}</span>` : ''}
                 <span>${TYPE_LABEL[t.type]}</span>${t.method ? `<span>${esc(t.method)}</span>` : ''}</span></span>
@@ -750,6 +758,18 @@ function seriesRange(owners) {
 }
 
 // 통합은 사람별 추이를 같은 기간으로 맞춰 더한다 (한 사람만 직접 입력한 달도 다른 사람은 추정치로 채워짐)
+// 하위 분류가 있는 분류(식비)인데 하위 분류가 비어 있는 내역은 가게 이름으로 채워 저장해 둔다.
+// 엑셀 가져오기·분류 합치기로 들어온 내역도 여기서 한 번 채워진다. 이후엔 수정 창에서 고칠 수 있다.
+let backfilling = false;
+async function backfillSubs() {
+  if (!S.ready || backfilling || !S.store?.bulk) return;
+  const updateTx = S.tx.filter((t) => t.type === 'variable' && subList(t.category).length && !subList(t.category).includes(t.sub))
+    .map((t) => ({ id: t.id, data: { sub: guessSub(t.category, t.memo) } }));
+  if (!updateTx.length) return;
+  backfilling = true;
+  try { await S.store.bulk({ updateTx }); } catch { /* 다음 로딩 때 다시 시도 */ } finally { backfilling = false; }
+}
+
 function netWorthSeries(who, range = null) {
   if (who === 'all') {
     const r = seriesRange(MEMBERS);
@@ -1018,6 +1038,7 @@ function renderSettings() {
         <div class="card-head"><h2>분류 관리</h2></div>
         <form class="form-stack" id="cat-form">
           <label class="field"><span class="label">소비지출 분류</span><textarea id="cat-variable">${list(st.categories.variable)}</textarea></label>
+          <label class="field"><span class="label">식비 하위 분류</span><textarea id="sub-food">${list(subList('식비'))}</textarea></label>
           <label class="field"><span class="label">고정비용 분류 (저축·단기 적금은 저축으로 집계)</span><textarea id="cat-fixed">${list(st.categories.fixed)}</textarea></label>
           <label class="field"><span class="label">수입 분류</span><textarea id="cat-income">${list(st.categories.income)}</textarea></label>
           <label class="field"><span class="label">결제 수단 (소비지출)</span><textarea id="m-variable">${list(st.methods.variable)}</textarea></label>
@@ -1473,7 +1494,7 @@ async function runUpload() {
   const btn = $('#upload-run');
   btn.disabled = true; btn.textContent = '등록 중…';
   try {
-    await S.store.bulk({ addTx: add.map(({ line, sheet, file, dup, k, guessed, matched, recurring, suggest, ...t }) => ({ ...t, src: 'upload' })) });
+    await S.store.bulk({ addTx: add.map(({ line, sheet, file, dup, k, guessed, matched, recurring, suggest, ...t }) => ({ ...t, sub: t.type === 'variable' && subList(t.category).length ? (t.sub || guessSub(t.category, t.memo)) : '', src: 'upload' })) });
   } catch (e) {
     btn.disabled = false; btn.textContent = `${add.length}건 등록`;
     toast(`등록 실패: ${e.message}`);
@@ -1508,7 +1529,18 @@ function renderTxChoices() {
   for (const t of S.tx) if (t.type === form.type && t.memo) memos.set(t.memo, (memos.get(t.memo) || 0) + 1);
   $('#memo-list').innerHTML = [...memos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60)
     .map(([m]) => `<option value="${esc(m)}"></option>`).join('');
+  renderSubChoices();
   updateBudgetHint();
+}
+
+// 식비처럼 하위 분류가 있는 분류를 고르면 하위 분류 칩을 보여준다. 직접 고르기 전에는 메모(가게 이름)로 추정
+function renderSubChoices() {
+  const list = form.type === 'variable' ? subList(form.category) : [];
+  $('#tx-sub-field').hidden = !list.length;
+  if (!list.length) { form.sub = ''; return; }
+  if (!form.subTouched || !list.includes(form.sub)) form.sub = guessSub(form.category, $('#tx-memo').value);
+  $('#tx-sub').innerHTML = list.map((c) => `<button type="button" data-v="${esc(c)}">${esc(c)}</button>`).join('');
+  setPressed($('#tx-sub'), form.sub);
 }
 
 // 새로 입력하는 소비지출이 지난달들과 같은 가게·비슷한 금액이면 "고정비용으로 처리할까요?"라고 묻는다.
@@ -1575,6 +1607,8 @@ function openTx(tx) {
   form.owner = t?.owner || (S.who !== 'all' ? S.who : local.get('lastOwner', ''));
   form.type = t?.type || local.get('lastType', 'variable');
   form.category = t?.category || '';
+  form.sub = t?.sub || '';
+  form.subTouched = !!t?.sub;
   form.method = t?.method || (form.type === 'income' ? '' : methodOptions(form.type)[0] || '');
   $('#tx-title').textContent = t ? '내역 수정' : '내역 입력';
   $('#tx-date').value = t?.date || (S.ym === today().slice(0, 7) ? today() : `${S.ym}-01`);
@@ -1598,9 +1632,12 @@ async function saveTx(keepOpen) {
     : !amount ? '금액을 입력하세요.'
     : !form.category ? '분류를 선택하세요.' : '';
   if (problem) { err.textContent = problem; err.hidden = false; return; }
+  const memo = $('#tx-memo').value.trim();
+  const hasSub = form.type === 'variable' && subList(form.category).length > 0;
   const data = {
     owner: form.owner, type: form.type, date, amount, category: form.category,
-    method: form.type === 'income' ? '' : form.method, memo: $('#tx-memo').value.trim(),
+    method: form.type === 'income' ? '' : form.method, memo,
+    sub: hasSub ? (form.sub || guessSub(form.category, memo)) : '',
   };
   local.set('lastOwner', form.owner);
   local.set('lastType', form.type);
@@ -1614,6 +1651,7 @@ async function saveTx(keepOpen) {
   if (keepOpen) {
     $('#tx-amount').value = ''; $('#tx-memo').value = ''; form.category = '';
     form.typeTouched = false; $('#tx-hint').hidden = true;
+    form.sub = ''; form.subTouched = false;
     renderTxChoices(); $('#tx-amount').focus();
   } else {
     $('#tx-dialog').close();
@@ -1750,6 +1788,7 @@ function bind() {
     } else if (e.target.id === 'cat-form') {
       st.categories = { variable: splitList($('#cat-variable').value), fixed: splitList($('#cat-fixed').value), income: splitList($('#cat-income').value) };
       st.methods = { variable: splitList($('#m-variable').value), fixed: splitList($('#m-fixed').value) };
+      st.subcategories = { ...(st.subcategories || {}), '식비': splitList($('#sub-food').value) };
       await S.store.saveSettings(st); toast('분류를 저장했습니다');
     } else if (e.target.id === 'budget-form') {
       const mine = {};
@@ -1825,7 +1864,9 @@ function bind() {
       form.method = form.type === 'income' ? '' : (methodOptions(form.type).includes(form.method) ? form.method : methodOptions(form.type)[0] || '');
       renderTxChoices();
     })) return;
-    if (pick('#tx-category', 'category')) return;
+    if (pick('#tx-category', 'category', () => renderSubChoices())) return;
+    const sb = e.target.closest('#tx-sub button');
+    if (sb) { form.sub = sb.dataset.v; form.subTouched = true; setPressed($('#tx-sub'), form.sub); return; }
     pick('#tx-method', 'method');
   });
   $('#tx-amount').addEventListener('input', (e) => { formatAmountInput(e.target); updateBudgetHint(); });
@@ -1857,6 +1898,7 @@ function bind() {
       const hit = [...S.tx].reverse().find((t) => t.type === form.type && t.memo === e.target.value);
       if (hit) { form.category = hit.category; if (hit.method) form.method = hit.method; renderTxChoices(); }
     }
+    renderSubChoices();
     checkRecurringForm();
   });
   $('#tx-amount').addEventListener('change', checkRecurringForm);
@@ -1955,6 +1997,7 @@ async function start() {
         $('#error-banner').hidden = true;
         render();
         syncAssetHistory();
+        backfillSubs();
       },
       onError(msg) {
         const el = $('#error-banner'); el.textContent = msg; el.hidden = false;

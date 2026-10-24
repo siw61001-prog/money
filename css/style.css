@@ -236,6 +236,9 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 #tx-amount { font-size: 20px; font-weight: 700; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sub-pick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; padding: 8px 10px; border-radius: 12px; background: var(--surface-2); }
+.sub-pick .label { font-size: 12.5px; }
+.chips.small button { padding: 4px 10px; font-size: 13px; }
 .chips button {
   border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 6px 12px;
   font-size: 13.5px; cursor: pointer; font-weight: 500;
