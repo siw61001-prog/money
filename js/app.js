@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261025d';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025d';
+import { createStore, MEMBERS } from './store.js?v=20261025e';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025e';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -301,7 +301,6 @@ function statusCard(hhCats, monthNo) {
   const dayNo = Number(today().slice(8));
   const daysInMonth = new Date(Number(S.ym.slice(0, 4)), Number(S.ym.slice(5)), 0).getDate();
   const forecast = prog.current && dayNo ? Math.round((allSpent / dayNo) * daysInMonth) : 0;
-  const height = Math.max(160, rows.length * 30 + 40);
   return `<article class="card span-8 status-card">
     <div class="card-head"><h2>${monthNo}월 분류별 사용 현황</h2>
       <span class="sub">통합 · ${prog.current ? `${dayNo}일 기준 실시간` : '월 마감'}${S.who !== 'all' ? ' · 예산은 두 사람 합산 기준' : ''}</span></div>
@@ -314,47 +313,101 @@ function statusCard(hhCats, monthNo) {
       ${forecast ? `<div><span class="label">이 속도면 월말</span><strong>${won(forecast)}</strong></div>` : ''}
       ${over || warn ? `<div class="status-chips">${over ? `<span class="pill over">초과 ${over}개</span>` : ''}${warn ? `<span class="pill warn">주의 ${warn}개</span>` : ''}</div>` : ''}
     </div>
-    ${rows.length ? `<div class="chart-box" style="height:${height}px"><canvas id="chart-status" aria-label="분류별 예산 대비 사용 금액 막대그래프"></canvas></div>`
+    ${(tBudget ? budgeted.length : rows.length)
+      ? `<div class="chart-box" style="height:${Math.max(160, (tBudget ? budgeted.length : rows.length) * 30 + 40)}px"><canvas id="chart-status" aria-label="분류별 예산 대비 사용률 막대그래프"></canvas></div>`
       : `<p class="empty">${monthNo}월 소비지출이 아직 없어요.</p>`}
-    ${!tBudget ? '<p class="hint">설정 → 분류별 월 예산을 정하면 예산 대비 사용률이 함께 보여요. <a href="#settings">예산 정하기 →</a></p>'
-      : `<p class="hint">진한 막대가 쓴 금액, 연한 막대가 예산이에요. 초록은 여유, 주황은 80% 이상이거나 날짜보다 빨리 쓰는 중, 빨강은 초과예요.</p>`}
+    ${tBudget && rows.some((r) => !r.budget && r.spent)
+      ? `<p class="hint no-budget">예산 없는 분류: ${rows.filter((r) => !r.budget && r.spent).map((r) => `${esc(r.c)} ${shortWon(r.spent)}`).join(' · ')}</p>` : ''}
+    ${!tBudget ? '<p class="hint">설정 → 분류별 월 예산을 정하면 분류마다 예산의 몇 %를 썼는지 보여드려요. <a href="#settings">예산 정하기 →</a></p>'
+      : `<p class="hint">분류마다 자기 예산을 100%로 놓고 몇 %를 썼는지 보여줘요.${prog.current ? ' 세로 점선은 오늘 날짜 위치예요. 막대가 선보다 길면 날짜보다 빨리 쓰는 중이에요.' : ''}</p>`}
   </article>`;
 }
 
+// 막대 끝에 숫자를, 이번 달이면 오늘 날짜 위치에 세로 점선을 그리는 작은 플러그인
+const statusLabels = {
+  id: 'statusLabels',
+  afterDatasetsDraw(chart, _args, opts) {
+    const { ctx, chartArea, scales } = chart;
+    const meta = chart.getDatasetMeta(0);
+    ctx.save();
+    ctx.font = `600 12px ${cssVar('--font') || 'sans-serif'}`;
+    ctx.textBaseline = 'middle';
+    meta.data.forEach((bar, i) => {
+      const text = opts.labels[i];
+      if (!text) return;
+      const w = ctx.measureText(text).width;
+      // 오른쪽에 자리가 없으면 막대 안쪽(흰 글씨)에 쓴다
+      const inside = bar.x + 6 + w > chart.width - 4 && bar.x - bar.base > w + 12;
+      ctx.fillStyle = inside ? '#fff' : cssVar('--ink');
+      ctx.textAlign = inside ? 'right' : 'left';
+      ctx.fillText(text, inside ? bar.x - 6 : bar.x + 6, bar.y);
+    });
+    if (opts.pace != null) {
+      const x = scales.x.getPixelForValue(opts.pace);
+      ctx.strokeStyle = cssVar('--ink');
+      ctx.globalAlpha = 0.45;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(x, chartArea.top); ctx.lineTo(x, chartArea.bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = cssVar('--muted');
+      ctx.textAlign = 'center';
+      ctx.font = `600 11px ${cssVar('--font') || 'sans-serif'}`;
+      ctx.fillText(`오늘 ${Math.round(opts.pace)}%`, x, chartArea.top - 8);
+    }
+    ctx.restore();
+  },
+};
+
+// 예산이 있으면 분류마다 자기 예산을 100%로 놓은 사용률 막대, 없으면 쓴 금액 막대
 function drawStatusChart(hhCats) {
   charts.status?.destroy();
   const el = $('#chart-status');
   if (!el || !chartDefaults()) return;
-  const rows = statusRows(hhCats);
+  const all = statusRows(hhCats);
+  const byBudget = all.some((r) => r.budget);
+  const rows = byBudget ? all.filter((r) => r.budget) : all;
+  const prog = monthProgress(S.ym);
   const color = (st) => cssVar(st === 'over' ? '--expense' : st === 'warn' ? '--warn' : st === 'ok' ? '--saving' : '--muted');
+  const ratio = (r) => (r.spent / r.budget) * 100;
+  const maxPct = byBudget ? Math.max(100, ...rows.map(ratio)) : 0;
+  const axisMax = byBudget ? Math.min(200, Math.ceil(maxPct / 20) * 20 + (maxPct > 100 ? 20 : 0)) : undefined;
+  const value = (r) => (byBudget ? Math.min(ratio(r), axisMax) : r.spent);
+  const labels = rows.map((r) => (byBudget ? `${Math.round(ratio(r))}% · ${shortWon(r.spent)} / ${shortWon(r.budget)}` : shortWon(r.spent)));
+  const datasets = [{
+    label: '사용', data: rows.map(value), backgroundColor: rows.map((r) => color(r.state)),
+    borderRadius: 5, barPercentage: 0.6, categoryPercentage: 0.9, grouped: false, order: 1,
+  }];
+  if (byBudget) {
+    datasets.push({
+      label: '예산', data: rows.map(() => 100), backgroundColor: 'rgba(138, 130, 116, .16)',
+      borderRadius: 5, barPercentage: 0.95, categoryPercentage: 0.9, grouped: false, order: 2,
+    });
+  }
   charts.status = new Chart(el, {
     type: 'bar',
-    data: {
-      labels: rows.map((r) => r.c),
-      datasets: [
-        { label: '사용', data: rows.map((r) => r.spent), backgroundColor: rows.map((r) => color(r.state)),
-          borderRadius: 5, barPercentage: 0.6, categoryPercentage: 0.9, grouped: false, order: 1 },
-        { label: '예산', data: rows.map((r) => r.budget || null), backgroundColor: 'rgba(138, 130, 116, .16)',
-          borderRadius: 5, barPercentage: 0.95, categoryPercentage: 0.9, grouped: false, order: 2 },
-      ],
-    },
+    data: { labels: rows.map((r) => r.c), datasets },
+    plugins: [statusLabels],
     options: {
       indexAxis: 'y',
       maintainAspectRatio: false,
+      layout: { padding: { top: byBudget && prog.current ? 16 : 0, right: 8 } },
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: {
+        statusLabels: { labels, pace: byBudget && prog.current ? prog.elapsed * 100 : null },
+        tooltip: { filter: (c) => c.datasetIndex === 0, callbacks: {
           label: (c) => {
             const r = rows[c.dataIndex];
-            if (c.datasetIndex === 1) return `예산 ${won(r.budget)}`;
             if (!r.budget) return `사용 ${won(r.spent)} (예산 없음)`;
             const left = r.budget - r.spent;
-            return `사용 ${won(r.spent)} · ${pct(r.spent / r.budget)} · ${left >= 0 ? `남음 ${won(left)}` : `${won(-left)} 초과`}`;
+            return `사용 ${won(r.spent)} / 예산 ${won(r.budget)} · ${left >= 0 ? `남음 ${won(left)}` : `${won(-left)} 초과`}`;
           },
         } },
       },
       scales: {
-        x: { ticks: { callback: (v) => shortWon(v) }, grid: { color: cssVar('--line') } },
+        x: byBudget
+          ? { min: 0, max: axisMax, ticks: { stepSize: 25, callback: (v) => `${v}%` }, grid: { color: (c) => (c.tick.value === 100 ? cssVar('--muted') : cssVar('--line')) } }
+          : { ticks: { callback: (v) => shortWon(v) }, grid: { color: cssVar('--line') } },
         y: { grid: { display: false }, ticks: { font: { size: 13, weight: '600' }, color: cssVar('--ink') } },
       },
     },
