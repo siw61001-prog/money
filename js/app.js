@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261025g';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025g';
+import { createStore, MEMBERS } from './store.js?v=20261025h';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025h';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -91,9 +91,11 @@ function stats(list) {
   return s;
 }
 const inMonth = (list, ym) => list.filter((t) => t.date?.startsWith(ym));
-const goalOf = (who) => (who === 'all'
-  ? MEMBERS.reduce((a, m) => a + (Number(S.settings.goals[m]) || 0), 0)
-  : Number(S.settings.goals[who]) || 0);
+// 월 저축 목표는 두 사람 합산(통합) 하나. 예전 사람별 목표만 있으면 그 합을 쓴다.
+const householdGoal = () => {
+  const g = S.settings.goals || {};
+  return g['통합'] != null ? Number(g['통합']) || 0 : MEMBERS.reduce((a, m) => a + (Number(g[m]) || 0), 0);
+};
 
 function categoryOptions(type) {
   const base = S.settings.categories[type] || [];
@@ -163,8 +165,10 @@ function renderDashboard() {
   const monthNo = Number(S.ym.slice(5));
   const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
   const monthly = months.map((m) => stats(inMonth(list, m)));
-  const ytdSaved = monthly.slice(0, monthNo).reduce((a, s) => a + s.saved, 0);
-  const goal = goalOf(S.who);
+  // 저축 목표는 통합이라, 사람 화면에서도 두 사람 합산 저축으로 비교한다
+  const hhCur = stats(inMonth(S.tx, S.ym));
+  const ytdSaved = months.slice(0, monthNo).reduce((a, m) => a + stats(inMonth(S.tx, m)).saved, 0);
+  const goal = householdGoal();
   const yearGoal = goal * 12;
 
   const monthTx = inMonth(list, S.ym);
@@ -224,11 +228,11 @@ function renderDashboard() {
     <div class="grid">
       ${statusCard(hhCats, monthNo)}
       <article class="card span-4">
-        <div class="card-head"><h2>저축 목표</h2><span class="sub">월 목표 ${won(goal)}</span></div>
+        <div class="card-head"><h2>저축 목표 <small class="muted-tag">통합</small></h2><span class="sub">월 목표 ${won(goal)}</span></div>
         <div class="goal-row">
-          <div class="goal-top"><span>${monthNo}월 실제 저축</span><span><strong>${shortWon(cur.saved)}</strong> / ${shortWon(goal)}</span></div>
-          <div class="progress"><span style="width:${goal ? Math.max(0, Math.min(100, (cur.saved / goal) * 100)) : 0}%"></span></div>
-          <span class="hint">${goal ? `달성률 ${pct(cur.saved / goal)}` : '설정에서 월 목표를 정하세요'}</span>
+          <div class="goal-top"><span>${monthNo}월 실제 저축</span><span><strong>${shortWon(hhCur.saved)}</strong> / ${shortWon(goal)}</span></div>
+          <div class="progress"><span style="width:${goal ? Math.max(0, Math.min(100, (hhCur.saved / goal) * 100)) : 0}%"></span></div>
+          <span class="hint">${goal ? `달성률 ${pct(hhCur.saved / goal)}` : '설정에서 월 목표를 정하세요'}${S.who !== 'all' ? ` · ${esc(S.who)} 몫 ${shortWon(cur.saved)}` : ''}</span>
         </div>
         <div class="goal-row">
           <div class="goal-top"><span>${year}년 누적 (1~${monthNo}월)</span><span><strong>${shortWon(ytdSaved)}</strong> / ${shortWon(yearGoal)}</span></div>
@@ -236,7 +240,7 @@ function renderDashboard() {
           <span class="hint">${yearGoal ? `연간 목표 대비 ${pct(ytdSaved / yearGoal)}` : ''}</span>
         </div>
         <div class="goal-row">
-          <div class="goal-top"><span>${monthNo}월 남은 돈</span><span class="${cur.left >= 0 ? 'c-saving' : 'c-expense'}"><strong>${won(cur.left)}</strong></span></div>
+          <div class="goal-top"><span>${monthNo}월 남은 돈</span><span class="${hhCur.left >= 0 ? 'c-saving' : 'c-expense'}"><strong>${won(hhCur.left)}</strong></span></div>
           <span class="hint">수입에서 지출과 적금·저축 이체를 뺀 금액</span>
         </div>
       </article>
@@ -1334,11 +1338,11 @@ function renderSettings() {
       </article>
 
       <article class="card">
-        <div class="card-head"><h2>월 저축 목표</h2></div>
+        <div class="card-head"><h2>월 저축 목표</h2><span class="sub">통합 (${MEMBERS.join(' + ')})</span></div>
         <form class="form-stack" id="goal-form">
-          ${MEMBERS.map((m) => `<label class="field"><span class="label">${esc(m)} (원)</span>
-            <input class="input" id="goal-${esc(m)}" data-member="${esc(m)}" inputmode="numeric" value="${fmt(st.goals[m])}"></label>`).join('')}
-          <p class="hint">통합 화면의 목표는 두 사람 목표의 합입니다. 연간 목표 = 월 목표 × 12.</p>
+          <label class="field"><span class="label">두 사람 합산 월 저축 목표 (원)</span>
+            <input class="input" id="goal-shared" data-member="통합" inputmode="numeric" value="${fmt(householdGoal())}"></label>
+          <p class="hint">대시보드의 저축 목표는 사람 화면에서도 두 사람 합산으로 비교해요. 연간 목표 = 월 목표 × 12.</p>
           <div><button class="btn primary" type="submit">목표 저장</button></div>
         </form>
       </article>
