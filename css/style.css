@@ -266,6 +266,12 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 .budget-line .input { padding: 7px 12px; text-align: right; }
 .budget-line .avg { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 
+/* 최근 3개월 지출 · 일별 소비 */
+.three-total { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.three-total strong { font-size: 22px; letter-spacing: -.02em; color: var(--expense); }
+.daily-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; }
+@media (max-width: 960px) { .daily-layout { grid-template-columns: minmax(0, 1fr); } }
+
 /* 분류를 누르면 펼쳐지는 내역 */
 .cat-toggle {
   width: 100%; border: 0; background: none; padding: 4px 6px; margin: -4px -6px; border-radius: 10px;

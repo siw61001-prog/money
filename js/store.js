@@ -1,12 +1,12 @@
 // 저장소 계층: Firebase(Firestore) 또는 데모(localStorage) 중 하나를 같은 인터페이스로 제공한다.
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig } from './firebase-config.js?v=20261024a';
 
 export const MEMBERS = ['인원', '혜미'];
 
 export const DEFAULT_SETTINGS = {
   categories: {
     income: ['월급', '부업', '알바', '금융', '기타'],
-    variable: ['식비', '외식', '카페/간식', '생활비', '쇼핑', '교통비', '취미/여가', '미용', '의료/건강',
+    variable: ['식비', '간식', '생활비', '쇼핑', '교통비', '취미/여가', '미용', '의료/건강',
       '여행', '선물', '경조사', '이벤트', '인형뽑기', '결혼 비용', '기타'],
     fixed: ['주거', '공과금', '보험', '통신/구독', '저축', '단기 적금', '기타'],
   },

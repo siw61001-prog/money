@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js';
+import { createStore, MEMBERS } from './store.js?v=20261024a';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261024a';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -33,6 +33,9 @@ const S = {
   imports: [],
   budgetWho: '',
   openCats: new Set(), // 대시보드에서 펼쳐 둔 분류
+  mergeFrom: new Set(), // 분류 합치기에서 고른 분류
+  mergeTo: '',
+  mergeArmed: false,
   history: {}, // 월별 자산 기록
   histForm: false,
 };
@@ -171,7 +174,6 @@ function renderDashboard() {
   const cats = [...byCat.entries()].sort((a, b) => b[1].sum - a[1].sum);
   const catMax = cats[0]?.[1].sum || 1;
   const fixedList = monthTx.filter((t) => t.type === 'fixed').sort((a, b) => b.amount - a.amount);
-  const recent = [...monthTx].sort((a, b) => (b.date + (b.id || '')).localeCompare(a.date + (a.id || ''))).slice(0, 7);
   const scopeName = S.who === 'all' ? '통합' : S.who;
 
   const perPerson = S.who === 'all' ? `
@@ -232,29 +234,89 @@ function renderDashboard() {
 
       ${budgetCard(cats, catMax, cur, monthNo, monthTx)}
 
-      <article class="card span-6">
-        <div class="card-head"><h2>${monthNo}월 일별 소비</h2><span class="sub">소비지출 + 고정비용(저축 제외)</span></div>
-        <div class="chart-box small"><canvas id="chart-daily" aria-label="일별 지출 차트"></canvas></div>
-        <div class="card-head" style="margin:16px 0 6px"><h2>고정비용</h2><span class="sub">${fixedList.length}건 · ${won(cur.fixed + cur.saving)}</span></div>
-        ${fixedList.length ? `<ul class="mini-list">${fixedList.map((t) => `
-          <li><span class="pill ${isSaving(t) ? 'saving' : 'fixed'}">${esc(t.category)}</span>
-            <span class="grow">${esc(t.memo || t.category)}${S.who === 'all' ? ` <span class="meta">· ${esc(t.owner)}</span>` : ''}</span>
-            <span>${fmt(t.amount)}</span></li>`).join('')}</ul>` : '<p class="empty">이번 달 고정비용이 없습니다.</p>'}
-      </article>
+      ${threeMonthCard(list)}
 
       <article class="card span-12">
-        <div class="card-head"><h2>최근 내역</h2><a class="sub" href="#list">전체 보기 →</a></div>
-        ${recent.length ? `<ul class="mini-list">${recent.map((t) => `
-          <li><span class="meta" style="width:44px">${Number(t.date.slice(5, 7))}/${Number(t.date.slice(8))}</span>
-            <span class="pill ${t.type === 'income' ? 'income' : isSaving(t) ? 'saving' : t.type === 'fixed' ? 'fixed' : ''}">${esc(t.category)}</span>
-            <span class="grow">${esc(t.memo || t.category)}${S.who === 'all' ? ` <span class="meta">· ${esc(t.owner)}</span>` : ''}</span>
-            <span class="${t.type === 'income' ? 'c-income' : ''}">${t.type === 'income' ? '+' : '−'}${fmt(t.amount)}</span></li>`).join('')}</ul>`
-          : '<p class="empty">아직 내역이 없습니다.</p>'}
+        <div class="daily-layout">
+          <div class="daily-chart">
+            <div class="card-head"><h2>${monthNo}월 일별 소비</h2><span class="sub">소비지출 + 고정비용(저축 제외)</span></div>
+            <div class="chart-box"><canvas id="chart-daily" aria-label="일별 지출 차트"></canvas></div>
+          </div>
+          <div class="daily-fixed">
+            <div class="card-head"><h2>${monthNo}월 고정비용</h2><span class="sub">${fixedList.length}건 · ${won(cur.fixed + cur.saving)}</span></div>
+            ${fixedList.length ? `<ul class="mini-list">${fixedList.map((t) => `
+              <li><span class="pill ${isSaving(t) ? 'saving' : 'fixed'}">${esc(t.category)}</span>
+                <span class="grow">${esc(t.memo || t.category)}${S.who === 'all' ? ` <span class="meta">· ${esc(t.owner)}</span>` : ''}</span>
+                <span>${fmt(t.amount)}</span></li>`).join('')}</ul>` : '<p class="empty">이번 달 고정비용이 없습니다.</p>'}
+          </div>
+        </div>
       </article>
     </div>`;
 
   drawYearChart(months, monthly);
   drawDailyChart(monthTx);
+  drawThreeMonthChart(list);
+}
+
+/* ---------- 최근 3개월 합산 지출 ---------- */
+const lastMonths = (ym, n) => Array.from({ length: n }, (_, i) => shiftYM(ym, i - n + 1));
+
+function threeMonthCard(list) {
+  const ms = lastMonths(S.ym, 3);
+  const per = ms.map((m) => stats(inMonth(list, m)));
+  const total = per.reduce((a, s) => a + s.spend, 0);
+  const counted = per.filter((s) => s.spend > 0).length || 1;
+  const byCat = new Map();
+  for (const t of list) {
+    if (t.type !== 'variable' || !ms.includes(t.date.slice(0, 7))) continue;
+    byCat.set(t.category, (byCat.get(t.category) || 0) + t.amount);
+  }
+  const cats = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
+  const top = cats.slice(0, 6);
+  const rest = cats.slice(6).reduce((a, [, v]) => a + v, 0);
+  const max = top[0]?.[1] || 1;
+  const varTotal = cats.reduce((a, [, v]) => a + v, 0) || 1;
+  const range = `${Number(ms[0].slice(5))}~${Number(ms[2].slice(5))}월`;
+  return `<article class="card span-6">
+    <div class="card-head"><h2>최근 3개월 지출</h2><span class="sub">${range} · 월평균 ${won(Math.round(total / counted))}</span></div>
+    <div class="three-total"><span>${range} 합계</span><strong>${won(total)}</strong>
+      <span class="hint">고정 ${shortWon(per.reduce((a, s) => a + s.fixed, 0))} · 소비 ${shortWon(per.reduce((a, s) => a + s.variable, 0))}</span></div>
+    <div class="chart-box small"><canvas id="chart-3m" aria-label="최근 3개월 월별 지출 차트"></canvas></div>
+    ${top.length ? `<h3 class="sub-head">3개월 소비지출 분류 합계</h3>
+    <div class="bars">${top.map(([c, v]) => `<div class="bar-row"><span class="name">${esc(c)}</span>
+      <span class="bar-track"><span style="width:${(v / max) * 100}%"></span></span>
+      <span class="val">${fmt(v)}<small>${pct(v / varTotal)}</small></span></div>`).join('')}</div>
+    ${rest ? `<p class="hint" style="margin-top:8px">그 밖의 분류 ${cats.length - 6}개 ${won(rest)}</p>` : ''}` : ''}
+  </article>`;
+}
+
+function drawThreeMonthChart(list) {
+  charts.three?.destroy();
+  const el = $('#chart-3m');
+  if (!el || !chartDefaults()) return;
+  const ms = lastMonths(S.ym, 3);
+  const per = ms.map((m) => stats(inMonth(list, m)));
+  charts.three = new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: ms.map((m) => `${Number(m.slice(5))}월`),
+      datasets: [
+        { label: '고정비용', data: per.map((s) => s.fixed), backgroundColor: cssVar('--warn'), borderRadius: 4, maxBarThickness: 46 },
+        { label: '소비지출', data: per.map((s) => s.variable), backgroundColor: cssVar('--expense'), borderRadius: 4, maxBarThickness: 46 },
+      ],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 10, boxHeight: 10 } },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${won(c.raw)}`, footer: (items) => `합계: ${won(items.reduce((a, i) => a + i.raw, 0))}` } },
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, ticks: { callback: (v) => shortWon(v) }, grid: { color: cssVar('--line') } },
+      },
+    },
+  });
 }
 
 /* ---------- 분류별 예산 ---------- */
@@ -780,6 +842,53 @@ async function saveHistForm() {
   toast(`${ymLabel(ym)} ${owner} 자산 기록을 저장했습니다`);
 }
 
+/* ---------- 분류 합치기 ---------- */
+// 소비지출에 쓰인 분류와 설정 목록의 분류를, 쓰인 건수와 함께
+function mergeCandidates() {
+  const n = new Map(categoryOptions('variable').map((c) => [c, 0]));
+  for (const t of S.tx) if (t.type === 'variable') n.set(t.category, (n.get(t.category) || 0) + 1);
+  return [...n.entries()];
+}
+const mergeTargets = () => [...S.mergeFrom].filter((c) => c !== S.mergeTo.trim());
+const mergeTxs = () => { const from = new Set(mergeTargets()); return S.tx.filter((t) => t.type !== 'income' && from.has(t.category)); };
+const mergeReady = () => S.mergeTo.trim() && mergeTargets().length > 0;
+function mergePreviewText() {
+  if (!S.mergeFrom.size) return '합칠 분류를 위에서 고르세요.';
+  if (!S.mergeTo.trim()) return `${[...S.mergeFrom].join(', ')}을(를) 어떤 이름으로 합칠지 적어 주세요.`;
+  return `${mergeTargets().join(', ')} → ${S.mergeTo.trim()} (내역 ${mergeTxs().length}건)`;
+}
+const mergeButtonText = () => (S.mergeArmed ? '한 번 더 누르면 합칩니다' : mergeReady() ? `${mergeTxs().length}건 합치기` : '합치기');
+
+async function runMerge() {
+  const to = S.mergeTo.trim();
+  const from = mergeTargets();
+  const txs = mergeTxs();
+  await S.store.bulk({ updateTx: txs.map((t) => ({ id: t.id, data: { category: to } })) });
+  const st = structuredClone(S.settings);
+  const vars = st.categories.variable;
+  const at = Math.min(...from.map((c) => vars.indexOf(c)).filter((i) => i >= 0), vars.includes(to) ? vars.indexOf(to) : Infinity);
+  const kept = vars.filter((c) => !from.includes(c) && c !== to);
+  kept.splice(Number.isFinite(at) ? Math.min(at, kept.length) : kept.length, 0, to);
+  st.categories.variable = kept;
+  for (const m of MEMBERS) {
+    const b = { ...((st.budgets || {})[m] || {}) };
+    let moved = 0;
+    from.forEach((c) => { moved += Number(b[c]) || 0; delete b[c]; });
+    if (moved) b[to] = (Number(b[to]) || 0) + moved;
+    st.budgets = { ...(st.budgets || {}), [m]: b };
+  }
+  await S.store.saveSettings(st);
+  S.mergeFrom = new Set(); S.mergeTo = ''; S.mergeArmed = false;
+  toast(`${from.join(', ')} → ${to}: ${txs.length}건을 옮겼습니다`);
+}
+
+function refreshMergeUI() {
+  $('#merge-preview').textContent = mergePreviewText();
+  const btn = $('#merge-run');
+  btn.disabled = !mergeReady();
+  btn.textContent = mergeButtonText();
+}
+
 /* ---------- 설정 ---------- */
 function renderSettings() {
   const st = S.settings;
@@ -851,6 +960,20 @@ function renderSettings() {
           <label class="field"><span class="label">결제 수단 (고정비용)</span><textarea id="m-fixed">${list(st.methods.fixed)}</textarea></label>
           <p class="hint">쉼표로 구분합니다. 순서대로 입력 화면에 표시됩니다.</p>
           <div><button class="btn primary" type="submit">분류 저장</button></div>
+        </form>
+      </article>
+
+      <article class="card" id="merge-card">
+        <div class="card-head"><h2>분류 합치기</h2></div>
+        <form class="form-stack" id="merge-form">
+          <p class="hint">고른 분류의 내역을 모두 한 분류로 옮기고, 분류 목록과 예산도 함께 정리합니다. 두 사람 내역 모두에 적용돼요.</p>
+          <div class="chips" id="merge-from">${mergeCandidates().map(([c, n]) => `
+            <button type="button" data-v="${esc(c)}" aria-pressed="${S.mergeFrom.has(c)}">${esc(c)} <small>${n}건</small></button>`).join('')}</div>
+          <label class="field"><span class="label">합칠 분류 이름</span>
+            <input class="input" id="merge-to" list="merge-to-list" placeholder="예: 식비" value="${esc(S.mergeTo)}"></label>
+          <datalist id="merge-to-list">${categoryOptions('variable').map((c) => `<option value="${esc(c)}"></option>`).join('')}</datalist>
+          <p class="hint" id="merge-preview">${mergePreviewText()}</p>
+          <div><button class="btn primary" type="submit" id="merge-run" ${mergeReady() ? '' : 'disabled'}>${mergeButtonText()}</button></div>
         </form>
       </article>
 
@@ -955,7 +1078,7 @@ const txKey = (t) => `${t.owner}|${t.date}|${t.type}|${t.amount}|${(t.memo || ''
 const KEYWORD_RULES = [
   ['통신/구독', ['ANTHROPIC', 'CLAUDE', 'OPENAI', 'NETFLIX', '넷플릭스', 'YOUTUBE', '유튜브', '구글페이먼트', 'GOOGLE',
     'SPOTIFY', '스포티파이', 'APPLE.COM', '애플코리아', '디즈니플러스', '티빙', 'WAVVE', '왓챠', '쿠팡와우'], 'fixed'],
-  ['카페/간식', ['스타벅스', '투썸', '이디야', '메가커피', '메가엠지씨', '컴포즈', '빽다방', '할리스', '폴바셋', '엔제리너스',
+  ['간식', ['스타벅스', '투썸', '이디야', '메가커피', '메가엠지씨', '컴포즈', '빽다방', '할리스', '폴바셋', '엔제리너스',
     '매머드', '커피빈', '공차', '커피', '카페', '베이커리', '파리바게', '뚜레쥬르', '배스킨', '던킨', '편의점', 'GS25',
     '지에스25', 'CU', '씨유', '세븐일레븐', '이마트24', '미니스톱']],
   ['식비', ['이마트', '홈플러스', '롯데마트', '코스트코', '트레이더스', '하나로마트', '마트', '배달의민족', '배민', '요기요',
@@ -1043,9 +1166,9 @@ function learnFromMatches(files) {
 // 금액이 다른 결제(같은 가게의 다른 구매)는 따로 본다. 한 달에 같은 금액이 여러 번 나오는 곳(뽑기 등)은 제외.
 const recurKey = (t) => `${t.owner}|${normMemo(String(t.memo || '').replace(FOREIGN, ''))}`;
 const SIMILAR = 0.15;
-const DAILY_CATS = new Set(['식비', '외식', '카페/간식', '생활비', '쇼핑', '미용', '인형뽑기', '선물', '여행', '이벤트', '경조사', '결혼 비용']);
+const DAILY_CATS = new Set(['식비', '외식', '간식', '카페/간식', '생활비', '쇼핑', '미용', '인형뽑기', '선물', '여행', '이벤트', '경조사', '결혼 비용']);
 // 장보기·식당·커피·편의점은 금액이 같아도 고정비용으로 묻지 않는다
-const NEVER_FIXED = new Set(['식비', '외식', '카페/간식']);
+const NEVER_FIXED = new Set(['식비', '외식', '간식', '카페/간식']);
 const keywordCategory = (memo) => {
   const m = normMemo(memo);
   return KEYWORD_RULES.find(([, words, type]) => !type && words.some((w) => m.includes(normMemo(w))))?.[0] || '';
@@ -1544,6 +1667,12 @@ function bind() {
   const vs = $('#view-settings');
   vs.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (e.target.id === 'merge-form') {
+      if (!mergeReady()) return;
+      if (!S.mergeArmed) { S.mergeArmed = true; refreshMergeUI(); return; }
+      try { await runMerge(); } catch (err) { S.mergeArmed = false; refreshMergeUI(); toast(`합치지 못했습니다: ${err.message}`); }
+      return;
+    }
     const st = structuredClone(S.settings);
     if (e.target.id === 'goal-form') {
       $$('[data-member]', e.target).forEach((i) => { st.goals[i.dataset.member] = parseAmount(i.value); });
@@ -1560,6 +1689,7 @@ function bind() {
     }
   });
   vs.addEventListener('input', (e) => {
+    if (e.target.id === 'merge-to') { S.mergeTo = e.target.value; S.mergeArmed = false; refreshMergeUI(); return; }
     if (e.target.dataset.budgetCat == null) return;
     formatAmountInput(e.target);
     const total = $$('[data-budget-cat]', vs).reduce((a, i) => a + parseAmount(i.value), 0);
@@ -1587,6 +1717,14 @@ function bind() {
     else if (e.target.id === 'export-json') exportJSON();
     else if (e.target.id === 'restore-confirm') runRestore();
     else if (e.target.id === 'logout') S.store.signOut();
+    const mf = e.target.closest('#merge-from button');
+    if (mf) {
+      const c = mf.dataset.v;
+      if (S.mergeFrom.has(c)) S.mergeFrom.delete(c); else S.mergeFrom.add(c);
+      mf.setAttribute('aria-pressed', String(S.mergeFrom.has(c)));
+      S.mergeArmed = false; refreshMergeUI();
+      return;
+    }
     const who = e.target.closest('#budget-who button');
     if (who) { S.budgetWho = who.dataset.v; renderSettings(); }
     if (e.target.closest('#budget-fill-avg')) {
