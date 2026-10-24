@@ -266,6 +266,28 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 .budget-line .input { padding: 7px 12px; text-align: right; }
 .budget-line .avg { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 
+/* 분류를 누르면 펼쳐지는 내역 */
+.cat-toggle {
+  width: 100%; border: 0; background: none; padding: 4px 6px; margin: -4px -6px; border-radius: 10px;
+  cursor: pointer; text-align: left; box-sizing: content-box;
+}
+.cat-toggle:hover { background: var(--surface-2); }
+.cat-toggle .name::before { content: "›"; display: inline-block; width: 12px; color: var(--muted); transition: transform .15s; }
+.cat-item.open .cat-toggle .name::before { transform: rotate(90deg); }
+.cat-item.open .cat-toggle { background: var(--surface-2); }
+.cat-tx { list-style: none; margin: 6px 0 4px; padding: 4px 0 4px 12px; border-left: 2px solid var(--line); display: grid; gap: 2px; }
+.cat-tx button {
+  width: 100%; border: 0; background: none; cursor: pointer; text-align: left; border-radius: 8px;
+  display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 8px; font-size: 13.5px;
+}
+.cat-tx button:hover { background: var(--surface-2); }
+.cat-tx .when { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.cat-tx .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-tx .what small { color: var(--muted); margin-left: 6px; font-size: 12px; }
+.cat-tx .amt { font-weight: 600; white-space: nowrap; }
+.cat-tx .none { color: var(--muted); font-size: 13px; padding: 6px 8px; }
+.sub-head { font-size: 13px; font-weight: 600; color: var(--muted); margin: 18px 0 8px; }
+
 /* ---------- 순자산 추이 ---------- */
 .hist-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 10px; align-items: end;
   margin-top: 14px; padding: 14px; border-radius: 14px; background: var(--surface-2); }

@@ -32,6 +32,7 @@ const S = {
   filter: { type: 'all', cat: '', q: '' },
   imports: [],
   budgetWho: '',
+  openCats: new Set(), // 대시보드에서 펼쳐 둔 분류
   history: {}, // 월별 자산 기록
   histForm: false,
 };
@@ -229,7 +230,7 @@ function renderDashboard() {
 
       ${perPerson}
 
-      ${budgetCard(cats, catMax, cur, monthNo)}
+      ${budgetCard(cats, catMax, cur, monthNo, monthTx)}
 
       <article class="card span-6">
         <div class="card-head"><h2>${monthNo}월 일별 소비</h2><span class="sub">소비지출 + 고정비용(저축 제외)</span></div>
@@ -301,20 +302,35 @@ function avgSpend(who, cat, endYm, n = 3) {
   return months ? sum / months : 0;
 }
 
-function budgetCard(cats, catMax, cur, monthNo) {
+// 분류 줄을 누르면 그 달 그 분류의 내역(언제·무엇·얼마)이 아래로 펼쳐진다
+function catItem(cat, rowInner, monthTx) {
+  const open = S.openCats.has(cat);
+  const items = open ? monthTx.filter((t) => t.type === 'variable' && t.category === cat)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount) : [];
+  return `<div class="cat-item${open ? ' open' : ''}">
+    <button type="button" class="bar-row cat-toggle" data-cat="${esc(cat)}" aria-expanded="${open}">${rowInner}</button>
+    ${open ? `<ul class="cat-tx">${items.length ? items.map((t) => `
+      <li><button type="button" data-edit-tx="${esc(t.id)}">
+        <span class="when">${dayLabel(t.date).replace(/^\d+월 /, '')}</span>
+        <span class="what">${esc(t.memo || t.category)}<small>${[S.who === 'all' ? t.owner : '', t.method].filter(Boolean).map(esc).join(' · ')}</small></span>
+        <span class="amt">${fmt(t.amount)}</span></button></li>`).join('')
+      : '<li class="none">이번 달 이 분류 지출이 없어요.</li>'}</ul>` : ''}
+  </div>`;
+}
+
+function budgetCard(cats, catMax, cur, monthNo, monthTx) {
   const budgets = budgetsOf(S.who);
   const spentOf = new Map(cats.map(([c, v]) => [c, v.sum]));
   const budgeted = Object.keys(budgets);
   const prog = monthProgress(S.ym);
+  const tip = '<p class="hint" style="margin-top:12px">분류를 누르면 언제, 어디에 썼는지 내역이 펼쳐져요. 내역을 누르면 수정할 수 있어요.</p>';
   if (!budgeted.length) {
     return `<article class="card span-6">
       <div class="card-head"><h2>${monthNo}월 소비지출 분류</h2><a class="sub" href="#settings" data-goto-budget>예산 정하기 →</a></div>
-      ${cats.length ? `<div class="bars">${cats.map(([name, c]) => `
-        <div class="bar-row"><span class="name">${esc(name)}</span>
+      ${cats.length ? `<div class="bars">${cats.map(([name, c]) => catItem(name, `<span class="name">${esc(name)}</span>
           <span class="bar-track"><span style="width:${(c.sum / catMax) * 100}%"></span></span>
-          <span class="val">${fmt(c.sum)}<small>${pct(c.sum / cur.variable)}</small></span></div>`).join('')}</div>`
+          <span class="val">${fmt(c.sum)}<small>${pct(c.sum / cur.variable)}</small></span>`, monthTx)).join('')}</div>${tip}`
         : `<p class="empty">${ymLabel(S.ym)} 소비지출이 없습니다. 오른쪽 아래 ‘내역 입력’으로 추가하세요.</p>`}
-      <p class="hint" style="margin-top:12px">설정에서 분류별 월 예산을 정하면 여기서 얼마나 썼는지, 얼마 남았는지 보여드려요.</p>
     </article>`;
   }
   const totalBudget = budgeted.reduce((a, c) => a + budgets[c], 0);
@@ -338,13 +354,17 @@ function budgetCard(cats, catMax, cur, monthNo) {
     <div class="bars budget-rows">${rows.map((r) => {
       const st = budgetState(r.spent, r.budget, prog.elapsed);
       const left = r.budget - r.spent;
-      return `<div class="bar-row"><span class="name">${esc(r.c)}</span>
+      return catItem(r.c, `<span class="name">${esc(r.c)}</span>
         <span class="bar-track"><span class="${st}" style="width:${Math.min(100, (r.spent / r.budget) * 100)}%"></span>
           ${prog.current ? `<i class="pace" style="left:${prog.elapsed * 100}%"></i>` : ''}</span>
         <span class="val">${fmt(r.spent)}<small>/ ${shortWon(r.budget)}</small>
-          <em class="${st}">${left >= 0 ? `남음 ${shortWon(left)}` : `${shortWon(-left)} 초과`}</em></span></div>`;
+          <em class="${st}">${left >= 0 ? `남음 ${shortWon(left)}` : `${shortWon(-left)} 초과`}</em></span>`, monthTx);
     }).join('')}</div>
-    ${extra.length ? `<p class="hint" style="margin-top:12px">예산 없는 분류: ${extra.map(([c, v]) => `${esc(c)} ${shortWon(v.sum)}`).join(' · ')}</p>` : ''}
+    ${extra.length ? `<h3 class="sub-head">예산 없는 분류</h3>
+    <div class="bars budget-rows">${extra.map(([c, v]) => catItem(c, `<span class="name">${esc(c)}</span>
+        <span class="bar-track"><span style="width:${(v.sum / catMax) * 100}%;background:var(--muted);opacity:.45"></span></span>
+        <span class="val">${fmt(v.sum)}<small>${v.n}건</small></span>`, monthTx)).join('')}</div>` : ''}
+    ${tip}
   </article>`;
 }
 
@@ -1604,6 +1624,16 @@ function bind() {
   $('#tx-date').addEventListener('change', updateBudgetHint);
   $('#view-dashboard').addEventListener('click', (e) => {
     if (e.target.closest('[data-goto-budget]') && S.who !== 'all') S.budgetWho = S.who;
+    const edit = e.target.closest('[data-edit-tx]');
+    if (edit) { openTx(S.tx.find((t) => t.id === edit.dataset.editTx)); return; }
+    const toggle = e.target.closest('.cat-toggle');
+    if (toggle) {
+      const c = toggle.dataset.cat;
+      if (S.openCats.has(c)) S.openCats.delete(c); else S.openCats.add(c);
+      const y = window.scrollY;
+      renderDashboard();
+      window.scrollTo(0, y);
+    }
   });
   $('#tx-memo').addEventListener('change', (e) => {
     if (!form.category) {
