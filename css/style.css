@@ -291,6 +291,10 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 .cat-tx .what small { color: var(--muted); margin-left: 6px; font-size: 12px; }
 .cat-tx .amt { font-weight: 600; white-space: nowrap; }
 .cat-tx .none { color: var(--muted); font-size: 13px; padding: 6px 8px; }
+.cat-tx-months { display: grid; gap: 8px; margin: 6px 0 4px; }
+.cat-tx-months .cat-tx { margin: 2px 0 0; }
+.cat-month-head { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 600; color: var(--muted); padding: 2px 8px 0 14px; }
+.more-cats { margin-top: 8px; color: var(--muted); padding-inline: 8px; }
 .sub-head { font-size: 13px; font-weight: 600; color: var(--muted); margin: 18px 0 8px; }
 
 /* ---------- 순자산 추이 ---------- */

@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261024c';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261024c';
+import { createStore, MEMBERS } from './store.js?v=20261024d';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261024d';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -33,6 +33,8 @@ const S = {
   imports: [],
   budgetWho: '',
   openCats: new Set(), // 대시보드에서 펼쳐 둔 분류
+  openThree: new Set(), // 최근 3개월 카드에서 펼쳐 둔 분류
+  threeAll: false, // 최근 3개월 카드에서 모든 분류 보기
   mergeFrom: new Set(), // 분류 합치기에서 고른 분류
   mergeTo: '',
   mergeArmed: false,
@@ -271,21 +273,43 @@ function threeMonthCard(list) {
     byCat.set(t.category, (byCat.get(t.category) || 0) + t.amount);
   }
   const cats = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
-  const top = cats.slice(0, 6);
+  const top = S.threeAll ? cats : cats.slice(0, 6);
+  const restCount = cats.length - 6;
   const rest = cats.slice(6).reduce((a, [, v]) => a + v, 0);
-  const max = top[0]?.[1] || 1;
+  const max = cats[0]?.[1] || 1;
   const varTotal = cats.reduce((a, [, v]) => a + v, 0) || 1;
   const range = `${Number(ms[0].slice(5))}~${Number(ms[2].slice(5))}월`;
+  // 분류를 누르면 3개월 내역을 달별로 묶어 펼친다
+  const accordion = (c, v) => {
+    const open = S.openThree.has(c);
+    let body = '';
+    if (open) {
+      body = `<div class="cat-tx-months">${[...ms].reverse().map((m) => {
+        const items = list.filter((t) => t.type === 'variable' && t.category === c && t.date.startsWith(m))
+          .sort((a, b) => b.date.localeCompare(a.date) || b.amount - a.amount);
+        if (!items.length) return '';
+        return `<div class="cat-month"><div class="cat-month-head"><span>${Number(m.slice(5))}월</span><span>${items.length}건 · ${won(items.reduce((a, t) => a + t.amount, 0))}</span></div>
+          <ul class="cat-tx">${items.map((t) => `<li><button type="button" data-edit-tx="${esc(t.id)}">
+            <span class="when">${dayLabel(t.date).replace(/^\d+월 /, '')}</span>
+            <span class="what">${esc(t.memo || t.category)}<small>${[S.who === 'all' ? t.owner : '', t.method].filter(Boolean).map(esc).join(' · ')}</small></span>
+            <span class="amt">${fmt(t.amount)}</span></button></li>`).join('')}</ul></div>`;
+      }).join('')}</div>`;
+    }
+    return `<div class="cat-item${open ? ' open' : ''}">
+      <button type="button" class="bar-row cat-toggle" data-three-cat="${esc(c)}" aria-expanded="${open}"><span class="name">${esc(c)}</span>
+        <span class="bar-track"><span style="width:${(v / max) * 100}%"></span></span>
+        <span class="val">${fmt(v)}<small>${pct(v / varTotal)}</small></span></button>${body}</div>`;
+  };
   return `<article class="card span-6">
     <div class="card-head"><h2>최근 3개월 지출</h2><span class="sub">${range} · 월평균 ${won(Math.round(total / counted))}</span></div>
     <div class="three-total"><span>${range} 합계</span><strong>${won(total)}</strong>
       <span class="hint">고정 ${shortWon(per.reduce((a, s) => a + s.fixed, 0))} · 소비 ${shortWon(per.reduce((a, s) => a + s.variable, 0))}</span></div>
     <div class="chart-box small"><canvas id="chart-3m" aria-label="최근 3개월 월별 지출 차트"></canvas></div>
     ${top.length ? `<h3 class="sub-head">3개월 소비지출 분류 합계</h3>
-    <div class="bars">${top.map(([c, v]) => `<div class="bar-row"><span class="name">${esc(c)}</span>
-      <span class="bar-track"><span style="width:${(v / max) * 100}%"></span></span>
-      <span class="val">${fmt(v)}<small>${pct(v / varTotal)}</small></span></div>`).join('')}</div>
-    ${rest ? `<p class="hint" style="margin-top:8px">그 밖의 분류 ${cats.length - 6}개 ${won(rest)}</p>` : ''}` : ''}
+    <div class="bars">${top.map(([c, v]) => accordion(c, v)).join('')}</div>
+    ${restCount > 0 ? `<button type="button" class="btn small ghost more-cats" data-three-more>
+      ${S.threeAll ? '접기' : `그 밖의 분류 ${restCount}개 ${won(rest)} 더 보기`}</button>` : ''}
+    <p class="hint" style="margin-top:8px">분류를 누르면 3개월 내역이 달별로 펼쳐져요.</p>` : ''}
   </article>`;
 }
 
@@ -1763,10 +1787,17 @@ function bind() {
     if (e.target.closest('[data-goto-budget]') && S.who !== 'all') S.budgetWho = S.who;
     const edit = e.target.closest('[data-edit-tx]');
     if (edit) { openTx(S.tx.find((t) => t.id === edit.dataset.editTx)); return; }
+    if (e.target.closest('[data-three-more]')) {
+      S.threeAll = !S.threeAll;
+      const y = window.scrollY; renderDashboard(); window.scrollTo(0, y);
+      return;
+    }
     const toggle = e.target.closest('.cat-toggle');
     if (toggle) {
-      const c = toggle.dataset.cat;
-      if (S.openCats.has(c)) S.openCats.delete(c); else S.openCats.add(c);
+      const three = toggle.dataset.threeCat != null;
+      const set = three ? S.openThree : S.openCats;
+      const c = three ? toggle.dataset.threeCat : toggle.dataset.cat;
+      if (set.has(c)) set.delete(c); else set.add(c);
       const y = window.scrollY;
       renderDashboard();
       window.scrollTo(0, y);
