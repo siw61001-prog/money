@@ -31,6 +31,9 @@ const S = {
   ym: today().slice(0, 7),
   filter: { type: 'all', cat: '', q: '' },
   imports: [],
+  budgetWho: '',
+  history: {}, // 월별 자산 기록
+  histForm: false,
 };
 if (S.who !== 'all' && !MEMBERS.includes(S.who)) S.who = 'all';
 
@@ -226,14 +229,7 @@ function renderDashboard() {
 
       ${perPerson}
 
-      <article class="card span-6">
-        <div class="card-head"><h2>${monthNo}월 소비지출 분류</h2><span class="sub">${cats.length ? `${cats.reduce((a, c) => a + c[1].n, 0)}건 · ${won(cur.variable)}` : ''}</span></div>
-        ${cats.length ? `<div class="bars">${cats.map(([name, c]) => `
-          <div class="bar-row"><span class="name">${esc(name)}</span>
-            <span class="bar-track"><span style="width:${(c.sum / catMax) * 100}%"></span></span>
-            <span class="val">${fmt(c.sum)}<small>${pct(c.sum / cur.variable)}</small></span></div>`).join('')}</div>`
-          : `<p class="empty">${ymLabel(S.ym)} 소비지출이 없습니다. 오른쪽 아래 ‘내역 입력’으로 추가하세요.</p>`}
-      </article>
+      ${budgetCard(cats, catMax, cur, monthNo)}
 
       <article class="card span-6">
         <div class="card-head"><h2>${monthNo}월 일별 소비</h2><span class="sub">소비지출 + 고정비용(저축 제외)</span></div>
@@ -258,6 +254,98 @@ function renderDashboard() {
 
   drawYearChart(months, monthly);
   drawDailyChart(monthTx);
+}
+
+/* ---------- 분류별 예산 ---------- */
+// 예산은 사람별 소비지출 분류의 월 금액. 통합 화면은 두 사람 예산의 합.
+function budgetsOf(who) {
+  const b = S.settings.budgets || {};
+  const out = {};
+  for (const m of who === 'all' ? MEMBERS : [who]) {
+    for (const [c, v] of Object.entries(b[m] || {})) if (Number(v) > 0) out[c] = (out[c] || 0) + Number(v);
+  }
+  return out;
+}
+
+// 이번 달이면 지난 날짜 비율과 남은 날 수, 지난 달은 다 지난 것으로 본다
+function monthProgress(ym) {
+  const t = today();
+  const [y, m] = ym.split('-').map(Number);
+  const days = new Date(y, m, 0).getDate();
+  if (ym < t.slice(0, 7)) return { elapsed: 1, left: 0, current: false };
+  if (ym > t.slice(0, 7)) return { elapsed: 0, left: days, current: false };
+  const d = Number(t.slice(8));
+  return { elapsed: d / days, left: days - d + 1, current: true };
+}
+
+// ok: 여유, warn: 80% 이상이거나 날짜보다 빨리 쓰는 중, over: 초과
+function budgetState(spent, budget, elapsed) {
+  const r = spent / budget;
+  if (r > 1) return 'over';
+  if (r >= 0.8 || (elapsed < 1 && r > elapsed + 0.15)) return 'warn';
+  return 'ok';
+}
+
+// endYm 이전 최근 n달 중, 그 사람이 가계부를 적은 달만으로 평균을 낸다 (적기 전 달은 0원으로 치지 않음)
+function avgSpend(who, cat, endYm, n = 3) {
+  const all = scopedTx(who);
+  const list = all.filter((t) => t.type === 'variable' && t.category === cat);
+  let sum = 0;
+  let months = 0;
+  for (let i = 1; i <= n; i++) {
+    const ym = shiftYM(endYm, -i);
+    if (!all.some((t) => t.date.startsWith(ym))) continue;
+    months += 1;
+    sum += list.filter((t) => t.date.startsWith(ym)).reduce((a, t) => a + t.amount, 0);
+  }
+  return months ? sum / months : 0;
+}
+
+function budgetCard(cats, catMax, cur, monthNo) {
+  const budgets = budgetsOf(S.who);
+  const spentOf = new Map(cats.map(([c, v]) => [c, v.sum]));
+  const budgeted = Object.keys(budgets);
+  const prog = monthProgress(S.ym);
+  if (!budgeted.length) {
+    return `<article class="card span-6">
+      <div class="card-head"><h2>${monthNo}월 소비지출 분류</h2><a class="sub" href="#settings" data-goto-budget>예산 정하기 →</a></div>
+      ${cats.length ? `<div class="bars">${cats.map(([name, c]) => `
+        <div class="bar-row"><span class="name">${esc(name)}</span>
+          <span class="bar-track"><span style="width:${(c.sum / catMax) * 100}%"></span></span>
+          <span class="val">${fmt(c.sum)}<small>${pct(c.sum / cur.variable)}</small></span></div>`).join('')}</div>`
+        : `<p class="empty">${ymLabel(S.ym)} 소비지출이 없습니다. 오른쪽 아래 ‘내역 입력’으로 추가하세요.</p>`}
+      <p class="hint" style="margin-top:12px">설정에서 분류별 월 예산을 정하면 여기서 얼마나 썼는지, 얼마 남았는지 보여드려요.</p>
+    </article>`;
+  }
+  const totalBudget = budgeted.reduce((a, c) => a + budgets[c], 0);
+  const totalSpent = budgeted.reduce((a, c) => a + (spentOf.get(c) || 0), 0);
+  const totalState = budgetState(totalSpent, totalBudget, prog.elapsed);
+  const leftMoney = totalBudget - totalSpent;
+  const rows = budgeted.map((c) => ({ c, spent: spentOf.get(c) || 0, budget: budgets[c] }))
+    .sort((a, b) => b.spent / b.budget - a.spent / a.budget);
+  const extra = cats.filter(([c]) => !budgets[c]);
+  const message = !prog.current ? (leftMoney >= 0 ? `예산보다 ${won(leftMoney)} 덜 썼어요` : `예산을 ${won(-leftMoney)} 넘었어요`)
+    : leftMoney < 0 ? `벌써 예산을 ${won(-leftMoney)} 넘었어요`
+      : `남은 ${prog.left}일 동안 하루 ${won(Math.floor(leftMoney / prog.left))}까지 쓸 수 있어요`;
+  return `<article class="card span-6">
+    <div class="card-head"><h2>${monthNo}월 예산</h2><a class="sub" href="#settings" data-goto-budget>예산 수정 →</a></div>
+    <div class="budget-total ${totalState}">
+      <div class="goal-top"><span>예산 ${won(totalBudget)} 중 <strong>${won(totalSpent)}</strong> 사용</span><span class="pill ${totalState}">${pct(totalSpent / totalBudget)}</span></div>
+      <div class="progress budget"><span class="${totalState}" style="width:${Math.min(100, (totalSpent / totalBudget) * 100)}%"></span>
+        ${prog.current ? `<i class="pace" style="left:${prog.elapsed * 100}%" title="오늘까지 지난 날짜"></i>` : ''}</div>
+      <span class="hint">${message}</span>
+    </div>
+    <div class="bars budget-rows">${rows.map((r) => {
+      const st = budgetState(r.spent, r.budget, prog.elapsed);
+      const left = r.budget - r.spent;
+      return `<div class="bar-row"><span class="name">${esc(r.c)}</span>
+        <span class="bar-track"><span class="${st}" style="width:${Math.min(100, (r.spent / r.budget) * 100)}%"></span>
+          ${prog.current ? `<i class="pace" style="left:${prog.elapsed * 100}%"></i>` : ''}</span>
+        <span class="val">${fmt(r.spent)}<small>/ ${shortWon(r.budget)}</small>
+          <em class="${st}">${left >= 0 ? `남음 ${shortWon(left)}` : `${shortWon(-left)} 초과`}</em></span></div>`;
+    }).join('')}</div>
+    ${extra.length ? `<p class="hint" style="margin-top:12px">예산 없는 분류: ${extra.map(([c, v]) => `${esc(c)} ${shortWon(v.sum)}`).join(' · ')}</p>` : ''}
+  </article>`;
 }
 
 function chartDefaults() {
@@ -424,10 +512,15 @@ function renderAssets() {
   const byGroup = new Map();
   for (const a of list) if (a.kind === '자산') byGroup.set(a.group, (byGroup.get(a.group) || 0) + a.amount);
   const groups = [...byGroup.entries()].sort((a, b) => b[1] - a[1]);
+  const trend = netWorthSeries(S.who);
+  const before = trend.length > 1 ? trend.at(-2) : null;
+  const change = before ? (totalA - totalD) - before.value : null;
 
   $('#view-assets').innerHTML = `
     <div class="kpis">
-      <div class="kpi hero"><div class="k-label">순자산</div><div class="k-value">${won(totalA - totalD)}</div><div class="k-foot">${esc(S.who === 'all' ? '통합' : S.who)}</div></div>
+      <div class="kpi hero"><div class="k-label">순자산</div><div class="k-value">${won(totalA - totalD)}</div>
+        <div class="k-foot">${change == null ? esc(S.who === 'all' ? '통합' : S.who)
+          : `${Number(before.ym.slice(5))}월보다 <b class="${change >= 0 ? 'c-saving' : 'c-expense'}">${change >= 0 ? '+' : '−'}${shortWon(Math.abs(change))}</b>${before.kind === 'estimate' ? ' (추정 대비)' : ''}`}</div></div>
       <div class="kpi"><div class="k-label">총 자산</div><div class="k-value c-saving">${won(totalA)}</div><div class="k-foot">${list.filter((a) => a.kind === '자산').length}개 항목</div></div>
       <div class="kpi"><div class="k-label">부채</div><div class="k-value c-expense">${won(totalD)}</div><div class="k-foot">${list.filter((a) => a.kind === '부채').length}개 항목</div></div>
       <div class="kpi"><div class="k-label">자산 구성</div><div class="k-value" style="font-size:18px">${groups.length ? esc(groups[0][0]) : '–'}</div>
@@ -445,6 +538,7 @@ function renderAssets() {
             <span class="val">${fmt(net)}<small>${pct(net / Math.max(1, totalA - totalD))}</small></span></div>`;
         }).join('')}</div>
       </article>` : ''}
+      ${assetTrendCard()}
       <article class="card span-12">
         <div class="card-head"><h2>자산·부채 목록</h2><button type="button" class="btn small primary" id="add-asset">＋ 항목 추가</button></div>
         ${list.length ? `<div class="table-wrap"><table>
@@ -459,14 +553,245 @@ function renderAssets() {
         </table></div>` : '<p class="empty">아직 자산 항목이 없습니다. ‘항목 추가’를 누르거나 설정에서 엑셀을 가져오세요.</p>'}
       </article>
     </div>`;
+  drawNetWorthChart();
+}
+
+/* ---------- 자산 추이 ---------- */
+// 자산 목록이 바뀔 때마다 '이번 달' 기록을 덮어써서, 달마다 마지막 상태가 남게 한다.
+// 기록이 시작되기 전 달은 가계부의 월별 실제 저축(수입 − 지출)으로 거꾸로 추정한다.
+const nowYM = () => today().slice(0, 7);
+const isMonthKey = (k) => /^\d{4}-\d{2}$/.test(k);
+
+function assetEntry() {
+  const e = {};
+  for (const m of MEMBERS) {
+    const mine = S.assets.filter((a) => a.owner === m);
+    const groups = {};
+    mine.filter((a) => a.kind === '자산').forEach((a) => { groups[a.group] = (groups[a.group] || 0) + a.amount; });
+    e[m] = {
+      asset: mine.filter((a) => a.kind === '자산').reduce((s, a) => s + a.amount, 0),
+      debt: mine.filter((a) => a.kind === '부채').reduce((s, a) => s + a.amount, 0),
+      groups,
+    };
+  }
+  return e;
+}
+// Firestore는 맵의 키 순서를 보장하지 않으니 정렬해서 비교한다
+const canonEntry = (e) => JSON.stringify(MEMBERS.map((m) => {
+  const x = e?.[m];
+  return x ? [x.asset, x.debt, Object.entries(x.groups || {}).sort()] : null;
+}));
+
+let historyTimer;
+function syncAssetHistory() {
+  if (!S.ready || !S.store?.saveAssetHistory) return;
+  const ym = nowYM();
+  const stored = S.history[ym];
+  if (!S.assets.length && !stored) return;
+  const entry = assetEntry();
+  if (stored && !stored.manual && canonEntry(stored) === canonEntry(entry)) return;
+  clearTimeout(historyTimer);
+  historyTimer = setTimeout(() => {
+    S.store.saveAssetHistory({ [ym]: { ...entry, at: new Date().toISOString() } }).catch(() => {});
+  }, 800);
+}
+
+function seriesRange(owners) {
+  const recorded = Object.keys(S.history).filter((k) => isMonthKey(k) && owners.some((m) => S.history[k]?.[m])).sort();
+  if (!recorded.length) return null;
+  const txMonths = S.tx.filter((t) => owners.includes(t.owner)).map((t) => t.date.slice(0, 7)).sort();
+  return { start: [txMonths[0], recorded[0]].filter(Boolean).sort()[0], end: [nowYM(), recorded.at(-1)].sort().at(-1) };
+}
+
+// 통합은 사람별 추이를 같은 기간으로 맞춰 더한다 (한 사람만 직접 입력한 달도 다른 사람은 추정치로 채워짐)
+function netWorthSeries(who, range = null) {
+  if (who === 'all') {
+    const r = seriesRange(MEMBERS);
+    if (!r) return [];
+    const parts = MEMBERS.map((m) => netWorthSeries(m, r));
+    return parts[0].map((p, i) => {
+      const kinds = parts.map((s) => s[i]?.kind).filter(Boolean);
+      return {
+        ym: p.ym,
+        value: parts.reduce((a, s) => a + (s[i]?.value || 0), 0),
+        kind: kinds.includes('estimate') ? 'estimate' : kinds.includes('manual') ? 'manual' : 'recorded',
+      };
+    });
+  }
+  const has = (e) => !!e?.[who];
+  const val = (e) => (e[who].asset || 0) - (e[who].debt || 0);
+  const r = range || seriesRange([who]);
+  if (!r || !Object.keys(S.history).some((k) => isMonthKey(k) && has(S.history[k]))) {
+    return range ? pointsWithoutRecord(range) : [];
+  }
+  const saved = (ym) => stats(inMonth(scopedTx(who), ym)).saved;
+  const pts = [];
+  for (let m = r.start; m <= r.end; m = shiftYM(m, 1)) {
+    const e = S.history[m];
+    pts.push({ ym: m, value: has(e) ? val(e) : null, kind: has(e) ? (e[who].manual || e.manual ? 'manual' : 'recorded') : null });
+  }
+  for (let i = pts.length - 2; i >= 0; i--) {
+    if (pts[i].value == null && pts[i + 1].value != null) {
+      pts[i].value = pts[i + 1].value - saved(pts[i + 1].ym);
+      pts[i].kind = 'estimate';
+    }
+  }
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].value == null && pts[i - 1].value != null) {
+      pts[i].value = pts[i - 1].value + saved(pts[i].ym);
+      pts[i].kind = 'estimate';
+    }
+  }
+  return pts;
+}
+
+// 자산 기록이 하나도 없는 사람은 통합 합계에 0으로 들어간다
+function pointsWithoutRecord(range) {
+  const pts = [];
+  for (let m = range.start; m <= range.end; m = shiftYM(m, 1)) pts.push({ ym: m, value: 0, kind: null });
+  return pts;
+}
+
+const KIND_LABEL = { recorded: '기록', manual: '직접 입력', estimate: '추정' };
+
+function assetTrendCard() {
+  const pts = netWorthSeries(S.who);
+  const last = nowYM();
+  const maxPast = shiftYM(last, -1);
+  const form = S.histForm ? `
+    <form class="hist-form" id="hist-form">
+      <label class="field"><span class="label">월</span><input type="month" class="input" id="hist-month" max="${maxPast}" value="${maxPast}" required></label>
+      <label class="field"><span class="label">누구</span><select class="input" id="hist-owner">${MEMBERS.map((m) =>
+        `<option ${m === (S.who === 'all' ? MEMBERS[0] : S.who) ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></label>
+      <label class="field"><span class="label">자산 합계 (원)</span><input class="input" id="hist-asset" inputmode="numeric" required></label>
+      <label class="field"><span class="label">부채 합계 (원)</span><input class="input" id="hist-debt" inputmode="numeric" value="0"></label>
+      <div class="hist-actions"><button type="button" class="btn ghost" id="hist-cancel">취소</button><button type="submit" class="btn primary">기록 저장</button></div>
+    </form>` : '';
+  if (!pts.length) {
+    return `<article class="card span-12"><div class="card-head"><h2>순자산 추이</h2>
+      <button type="button" class="btn small" id="hist-open">지난 달 기록 입력</button></div>
+      ${form}<p class="empty">자산 항목이 생기면 이번 달부터 매달 자동으로 기록돼요.</p></article>`;
+  }
+  const first = pts[0].value;
+  const lastPt = pts.at(-1);
+  const prev = pts.at(-2);
+  const hasEstimate = pts.some((p) => p.kind === 'estimate');
+  return `<article class="card span-12">
+    <div class="card-head"><h2>순자산 추이</h2>
+      <span class="sub">${esc(S.who === 'all' ? '통합' : S.who)} · ${ymLabel(pts[0].ym)}부터 ${pts.length}개월
+        ${pts.length > 1 ? ` · 그동안 <b class="${lastPt.value - first >= 0 ? 'c-saving' : 'c-expense'}">${lastPt.value - first >= 0 ? '+' : '−'}${shortWon(Math.abs(lastPt.value - first))}</b>` : ''}</span></div>
+    <div class="chart-box"><canvas id="chart-networth" aria-label="월별 순자산 추이 차트"></canvas></div>
+    ${hasEstimate ? '<p class="hint">점선은 자산 기록이 없던 달을 가계부의 실제 저축(수입 − 지출)으로 거꾸로 계산한 추정치예요. 수입을 빠짐없이 적을수록 정확해져요.</p>' : ''}
+    <div class="table-wrap" style="margin-top:8px"><table>
+      <thead><tr><th class="left">월</th><th>순자산</th><th>전월 대비</th><th>그 달 실제 저축</th><th class="left">구분</th></tr></thead>
+      <tbody>${[...pts].reverse().map((p, i, arr) => {
+        const before = arr[i + 1];
+        const diff = before ? p.value - before.value : null;
+        const sv = stats(inMonth(scopedTx(), p.ym)).saved;
+        return `<tr><td class="left">${ymLabel(p.ym)}</td><td>${fmt(p.value)}</td>
+          <td class="${diff == null ? '' : diff >= 0 ? 'c-saving' : 'c-expense'}">${diff == null ? '–' : `${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff))}`}</td>
+          <td>${fmt(sv)}</td><td class="left"><span class="pill ${p.kind === 'estimate' ? '' : 'saving'}">${KIND_LABEL[p.kind]}</span></td></tr>`;
+      }).join('')}</tbody></table></div>
+    <div class="toolbar" style="margin-top:12px">
+      <button type="button" class="btn small" id="hist-open">지난 달 기록 입력</button>
+      <span class="hint">통장 잔고 등 예전 달 자산을 알면 넣어 주세요. 추정 대신 그 값을 씁니다.${prev ? '' : ''}</span>
+    </div>
+    ${form}
+  </article>`;
+}
+
+function drawNetWorthChart() {
+  charts.networth?.destroy();
+  const el = $('#chart-networth');
+  if (!el || !chartDefaults()) return;
+  const range = seriesRange(MEMBERS);
+  const series = (who) => netWorthSeries(who, who === 'all' ? null : range);
+  const main = netWorthSeries(S.who);
+  const dashed = (pts) => (ctx) => (pts[ctx.p0DataIndex]?.kind === 'estimate' || pts[ctx.p1DataIndex]?.kind === 'estimate' ? [6, 5] : undefined);
+  const datasets = [{
+    label: S.who === 'all' ? '통합 순자산' : `${S.who} 순자산`,
+    data: main.map((p) => p.value), borderColor: cssVar('--accent'), backgroundColor: 'rgba(107,158,79,.12)',
+    fill: true, tension: .3, borderWidth: 2.5,
+    pointRadius: main.map((p) => (p.kind === 'estimate' ? 2 : 4)), pointBackgroundColor: cssVar('--accent'),
+    segment: { borderDash: dashed(main) },
+  }];
+  if (S.who === 'all') {
+    MEMBERS.forEach((m) => {
+      const s = series(m);
+      const byYm = new Map(s.map((p) => [p.ym, p]));
+      const aligned = main.map((p) => byYm.get(p.ym) || { value: null });
+      datasets.push({
+        label: m, data: aligned.map((p) => p.value), borderColor: cssVar(m === MEMBERS[0] ? '--p1' : '--p2'),
+        backgroundColor: cssVar(m === MEMBERS[0] ? '--p1' : '--p2'), tension: .3, borderWidth: 1.5, pointRadius: 2,
+        segment: { borderDash: dashed(aligned) }, spanGaps: true,
+      });
+    });
+  }
+  charts.networth = new Chart(el, {
+    type: 'line',
+    data: { labels: main.map((p) => `${Number(p.ym.slice(5))}월`), datasets },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: S.who === 'all', position: 'bottom', labels: { boxWidth: 10, boxHeight: 10 } },
+        tooltip: { callbacks: {
+          title: (c) => ymLabel(main[c[0].dataIndex].ym),
+          label: (c) => `${c.dataset.label}: ${won(c.raw)}${c.datasetIndex === 0 ? ` (${KIND_LABEL[main[c.dataIndex].kind]})` : ''}`,
+        } },
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: { ticks: { callback: (v) => shortWon(v) }, grid: { color: cssVar('--line') } },
+      },
+    },
+  });
+}
+
+async function saveHistForm() {
+  const ym = $('#hist-month').value;
+  const owner = $('#hist-owner').value;
+  const asset = parseAmount($('#hist-asset').value);
+  const debt = parseAmount($('#hist-debt').value);
+  if (!ym || ym >= nowYM()) { toast('지난 달만 직접 입력할 수 있어요 (이번 달은 자동 기록)'); return; }
+  const prev = S.history[ym] || {};
+  await S.store.saveAssetHistory({ [ym]: { ...prev, [owner]: { asset, debt, groups: {}, manual: true }, at: new Date().toISOString() } });
+  S.histForm = false;
+  toast(`${ymLabel(ym)} ${owner} 자산 기록을 저장했습니다`);
 }
 
 /* ---------- 설정 ---------- */
 function renderSettings() {
   const st = S.settings;
   const list = (arr) => esc(arr.join(', '));
+  if (!MEMBERS.includes(S.budgetWho)) S.budgetWho = S.who !== 'all' ? S.who : MEMBERS[0];
+  const bw = S.budgetWho;
+  const myBudget = (st.budgets || {})[bw] || {};
+  const thisYm = today().slice(0, 7);
+  const budgetCats = categoryOptions('variable');
   $('#view-settings').innerHTML = `
     <div class="settings-grid">
+      <article class="card budget-editor" id="budget-card">
+        <div class="card-head"><h2>분류별 월 예산</h2>
+          <div class="seg" id="budget-who">${MEMBERS.map((m) => `<button type="button" data-v="${esc(m)}" aria-pressed="${bw === m}">
+            <span class="dot" style="background:${memberColor(m)}"></span>${esc(m)}</button>`).join('')}</div></div>
+        <form class="form-stack" id="budget-form">
+          <p class="hint">${esc(bw)}님의 소비지출 분류별 한 달 예산이에요. 비워 두면 예산 없음으로 봅니다. 오른쪽 회색 숫자는 지난 3달 평균이에요.</p>
+          <div class="budget-grid">${budgetCats.map((c) => {
+            const avg = avgSpend(bw, c, thisYm);
+            return `<label class="budget-line"><span class="name">${esc(c)}</span>
+              <input class="input" data-budget-cat="${esc(c)}" inputmode="numeric" placeholder="예산 없음" value="${myBudget[c] ? fmt(myBudget[c]) : ''}">
+              <span class="avg" data-avg="${Math.round(avg / 10000) * 10000}">${avg ? `평균 ${shortWon(avg)}` : ''}</span></label>`;
+          }).join('')}</div>
+          <div class="toolbar">
+            <span class="hint" id="budget-sum">합계 ${won(Object.values(myBudget).reduce((a, v) => a + (Number(v) || 0), 0))}</span>
+            <span class="spacer"></span>
+            <button class="btn" type="button" id="budget-fill-avg">빈칸을 평균으로 채우기</button>
+            <button class="btn primary" type="submit">예산 저장</button>
+          </div>
+        </form>
+      </article>
+
       <article class="card">
         <div class="card-head"><h2>월 저축 목표</h2></div>
         <form class="form-stack" id="goal-form">
@@ -565,7 +890,7 @@ async function runImport() {
 function exportJSON() {
   const strip = ({ updatedAt, ...rest }) => rest;
   const payload = { app: 'gagyebu', version: 1, exportedAt: new Date().toISOString(), settings: S.settings,
-    tx: S.tx.map(strip), assets: S.assets.map(strip) };
+    tx: S.tx.map(strip), assets: S.assets.map(strip), assetHistory: S.history };
   const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -596,6 +921,7 @@ async function runRestore() {
     addTx: d.tx.map(clean), addAssets: (d.assets || []).map(clean),
   });
   if (d.settings) await S.store.saveSettings(d.settings);
+  if (d.assetHistory && Object.keys(d.assetHistory).length) await S.store.saveAssetHistory(d.assetHistory);
   pendingRestore = null;
   toast('백업을 복원했습니다');
 }
@@ -969,6 +1295,7 @@ function renderTxChoices() {
   for (const t of S.tx) if (t.type === form.type && t.memo) memos.set(t.memo, (memos.get(t.memo) || 0) + 1);
   $('#memo-list').innerHTML = [...memos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60)
     .map(([m]) => `<option value="${esc(m)}"></option>`).join('');
+  updateBudgetHint();
 }
 
 // 새로 입력하는 소비지출이 지난달들과 같은 가게·비슷한 금액이면 "고정비용으로 처리할까요?"라고 묻는다.
@@ -1007,6 +1334,24 @@ async function answerFormSuggestion(accept) {
     st.ignoredRecurring = [...new Set([...(st.ignoredRecurring || []), s.key])];
     await S.store.saveSettings(st);
   }
+}
+
+// 소비지출 분류를 고르면 그 사람의 이번 달 예산 사용 현황을 보여준다
+function updateBudgetHint() {
+  const el = $('#tx-budget');
+  const date = $('#tx-date').value;
+  const budget = form.owner && form.type === 'variable' && form.category ? budgetsOf(form.owner)[form.category] : 0;
+  if (!budget || !date) { el.hidden = true; return; }
+  const ym = date.slice(0, 7);
+  const spent = S.tx.filter((t) => t.owner === form.owner && t.type === 'variable' && t.category === form.category
+    && t.date.startsWith(ym) && t.id !== form.id).reduce((a, t) => a + t.amount, 0);
+  const amount = parseAmount($('#tx-amount').value);
+  const after = spent + amount;
+  const st = budgetState(after, budget, monthProgress(ym).elapsed);
+  el.className = `hint budget-hint ${st}`;
+  el.textContent = `${Number(ym.slice(5))}월 ${form.category} 예산 ${won(budget)} 중 ${won(spent)} 사용`
+    + (amount ? ` → 이번 것까지 ${won(after)} (${after > budget ? `${won(after - budget)} 초과` : `남음 ${won(budget - after)}`})` : ` · 남음 ${won(Math.max(0, budget - spent))}`);
+  el.hidden = false;
 }
 
 function openTx(tx) {
@@ -1162,7 +1507,17 @@ function bind() {
   $('#view-assets').addEventListener('click', (e) => {
     if (e.target.closest('#add-asset')) { openAsset(null); return; }
     const row = e.target.closest('[data-asset]');
-    if (row) openAsset(S.assets.find((a) => a.id === row.dataset.asset));
+    if (row) { openAsset(S.assets.find((a) => a.id === row.dataset.asset)); return; }
+    if (e.target.closest('#hist-open')) { S.histForm = true; renderAssets(); $('#hist-asset')?.focus(); return; }
+    if (e.target.closest('#hist-cancel')) { S.histForm = false; renderAssets(); }
+  });
+  $('#view-assets').addEventListener('submit', (e) => {
+    if (e.target.id !== 'hist-form') return;
+    e.preventDefault();
+    saveHistForm().catch((err) => toast(`저장하지 못했습니다: ${err.message}`));
+  });
+  $('#view-assets').addEventListener('input', (e) => {
+    if (e.target.id === 'hist-asset' || e.target.id === 'hist-debt') formatAmountInput(e.target);
   });
 
   // 설정
@@ -1177,7 +1532,18 @@ function bind() {
       st.categories = { variable: splitList($('#cat-variable').value), fixed: splitList($('#cat-fixed').value), income: splitList($('#cat-income').value) };
       st.methods = { variable: splitList($('#m-variable').value), fixed: splitList($('#m-fixed').value) };
       await S.store.saveSettings(st); toast('분류를 저장했습니다');
+    } else if (e.target.id === 'budget-form') {
+      const mine = {};
+      $$('[data-budget-cat]', e.target).forEach((i) => { const v = parseAmount(i.value); if (v > 0) mine[i.dataset.budgetCat] = v; });
+      st.budgets = { ...(st.budgets || {}), [S.budgetWho]: mine };
+      await S.store.saveSettings(st); toast(`${S.budgetWho}님 예산을 저장했습니다`);
     }
+  });
+  vs.addEventListener('input', (e) => {
+    if (e.target.dataset.budgetCat == null) return;
+    formatAmountInput(e.target);
+    const total = $$('[data-budget-cat]', vs).reduce((a, i) => a + parseAmount(i.value), 0);
+    $('#budget-sum').textContent = `합계 ${won(total)}`;
   });
   vs.addEventListener('change', async (e) => {
     if (e.target.id === 'import-input') {
@@ -1201,6 +1567,15 @@ function bind() {
     else if (e.target.id === 'export-json') exportJSON();
     else if (e.target.id === 'restore-confirm') runRestore();
     else if (e.target.id === 'logout') S.store.signOut();
+    const who = e.target.closest('#budget-who button');
+    if (who) { S.budgetWho = who.dataset.v; renderSettings(); }
+    if (e.target.closest('#budget-fill-avg')) {
+      $$('[data-budget-cat]', vs).forEach((i) => {
+        const avg = Number(i.closest('.budget-line').querySelector('.avg').dataset.avg);
+        if (!parseAmount(i.value) && avg > 0) i.value = fmt(avg);
+      });
+      $('#budget-sum').textContent = `합계 ${won($$('[data-budget-cat]', vs).reduce((a, i) => a + parseAmount(i.value), 0))} (저장 전)`;
+    }
   });
   vs.addEventListener('focusout', (e) => { if (e.target.dataset?.member) formatAmountInput(e.target); });
 
@@ -1213,7 +1588,7 @@ function bind() {
     const pick = (sel, key, after) => {
       const b = e.target.closest(`${sel} button`);
       if (!b) return false;
-      form[key] = b.dataset.v; after?.(); setPressed($(sel), form[key]); return true;
+      form[key] = b.dataset.v; after?.(); setPressed($(sel), form[key]); updateBudgetHint(); return true;
     };
     if (pick('#tx-owner', 'owner')) return;
     if (pick('#tx-type', 'type', () => {
@@ -1225,7 +1600,11 @@ function bind() {
     if (pick('#tx-category', 'category')) return;
     pick('#tx-method', 'method');
   });
-  $('#tx-amount').addEventListener('input', (e) => formatAmountInput(e.target));
+  $('#tx-amount').addEventListener('input', (e) => { formatAmountInput(e.target); updateBudgetHint(); });
+  $('#tx-date').addEventListener('change', updateBudgetHint);
+  $('#view-dashboard').addEventListener('click', (e) => {
+    if (e.target.closest('[data-goto-budget]') && S.who !== 'all') S.budgetWho = S.who;
+  });
   $('#tx-memo').addEventListener('change', (e) => {
     if (!form.category) {
       const hit = [...S.tx].reverse().find((t) => t.type === form.type && t.memo === e.target.value);
@@ -1319,14 +1698,16 @@ async function start() {
         if (!user) { S.ready = false; S.tx = []; S.assets = []; }
         render();
       },
-      onData({ tx, assets, settings, ready }) {
+      onData({ tx, assets, settings, assetHistory, ready }) {
         S.tx = tx.filter((t) => t.date && Number.isFinite(t.amount));
         S.assets = assets;
         S.settings = settings;
+        S.history = assetHistory || {};
         S.ready = ready;
         $('#loading').hidden = ready;
         $('#error-banner').hidden = true;
         render();
+        syncAssetHistory();
       },
       onError(msg) {
         const el = $('#error-banner'); el.textContent = msg; el.hidden = false;

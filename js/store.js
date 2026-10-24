@@ -16,13 +16,17 @@ export const DEFAULT_SETTINGS = {
   },
   goals: { '인원': 100000, '혜미': 100000 },
   ignoredRecurring: [], // '매달 반복 아님'으로 표시한 가게 (사람|가게 키)
+  budgets: { '인원': {}, '혜미': {} }, // 사람별 소비지출 분류 월 예산 { 분류: 금액 }
 };
 
 const FB_VERSION = '10.12.2';
 const BATCH_LIMIT = 450;
 
 export async function createStore({ onData, onAuth, onError }) {
-  return firebaseConfig.apiKey ? createFirebaseStore({ onData, onAuth, onError }) : createDemoStore({ onData, onAuth });
+  // 주소에 ?demo=1 을 붙이면 실제 데이터 대신 이 브라우저의 데모 데이터로 연다 (기능 시험용)
+  const forceDemo = new URLSearchParams(location.search).has('demo');
+  return firebaseConfig.apiKey && !forceDemo
+    ? createFirebaseStore({ onData, onAuth, onError }) : createDemoStore({ onData, onAuth });
 }
 
 function mergeSettings(s) {
@@ -33,6 +37,7 @@ function mergeSettings(s) {
     methods: { ...base.methods, ...(s.methods || {}) },
     goals: { ...base.goals, ...(s.goals || {}) },
     ignoredRecurring: Array.isArray(s.ignoredRecurring) ? s.ignoredRecurring : [],
+    budgets: { ...base.budgets, ...(s.budgets || {}) },
   };
 }
 
@@ -55,10 +60,11 @@ async function createFirebaseStore({ onData, onAuth, onError }) {
     db = fs.getFirestore(app);
   }
 
-  const data = { tx: [], assets: [], settings: mergeSettings(null) };
-  const loaded = { tx: false, assets: false, settings: false };
+  // assetHistory: 월별 자산 기록 { 'YYYY-MM': { 사람: { asset, debt, groups } } } — meta/assetHistory 문서 하나에 둔다
+  const data = { tx: [], assets: [], settings: mergeSettings(null), assetHistory: {} };
+  const loaded = { tx: false, assets: false, settings: false, history: false };
   let unsubs = [];
-  const emit = () => onData({ ...data, ready: loaded.tx && loaded.assets && loaded.settings });
+  const emit = () => onData({ ...data, ready: loaded.tx && loaded.assets && loaded.settings && loaded.history });
   const fail = (e) => onError(e.code === 'permission-denied'
     ? '이 계정은 가계부에 접근할 권한이 없습니다. firestore.rules에 이메일을 등록했는지 확인하세요.'
     : `데이터를 불러오지 못했습니다: ${e.message}`);
@@ -79,6 +85,10 @@ async function createFirebaseStore({ onData, onAuth, onError }) {
     unsubs.push(fs.onSnapshot(fs.doc(db, 'meta', 'settings'), (snap) => {
       data.settings = mergeSettings(snap.exists() ? snap.data() : null);
       loaded.settings = true; emit();
+    }, fail));
+    unsubs.push(fs.onSnapshot(fs.doc(db, 'meta', 'assetHistory'), (snap) => {
+      data.assetHistory = snap.exists() ? snap.data() : {};
+      loaded.history = true; emit();
     }, fail));
   });
 
@@ -113,6 +123,9 @@ async function createFirebaseStore({ onData, onAuth, onError }) {
     updateAsset: (id, a) => fs.updateDoc(fs.doc(db, 'assets', id), { ...a, ...stamp() }),
     deleteAsset: (id) => fs.deleteDoc(fs.doc(db, 'assets', id)),
     saveSettings: (s) => fs.setDoc(fs.doc(db, 'meta', 'settings'), s),
+    // months: { 'YYYY-MM': 기록 } — 넘긴 달만 덮어쓰고 나머지 달은 그대로 둔다
+    saveAssetHistory: (months) => fs.setDoc(fs.doc(db, 'meta', 'assetHistory'), months,
+      { mergeFields: Object.keys(months).map((k) => new fs.FieldPath(k)) }),
     async bulk({ addTx = [], addAssets = [], deleteTx = [], deleteAssets = [], updateTx = [] }) {
       const ops = [
         ...deleteTx.map((id) => (b) => b.delete(fs.doc(db, 'tx', id))),
@@ -137,6 +150,7 @@ function createDemoStore({ onData, onAuth }) {
   }
   data = data || { tx: [], assets: [], settings: null };
   data.settings = mergeSettings(data.settings);
+  data.assetHistory = data.assetHistory || {};
 
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
   const save = () => {
@@ -145,7 +159,8 @@ function createDemoStore({ onData, onAuth }) {
   };
   const upd = (list, id, patch) => list.map((x) => (x.id === id ? { ...x, ...patch } : x));
 
-  queueMicrotask(() => {
+  // createStore가 끝나 앱이 저장소를 받은 뒤에 첫 데이터를 보낸다
+  setTimeout(() => {
     onAuth({ email: 'demo', name: '데모' });
     onData({ ...data, ready: true });
   });
@@ -161,6 +176,7 @@ function createDemoStore({ onData, onAuth }) {
     async updateAsset(id, a) { data.assets = upd(data.assets, id, a); save(); },
     async deleteAsset(id) { data.assets = data.assets.filter((x) => x.id !== id); save(); },
     async saveSettings(s) { data.settings = mergeSettings(s); save(); },
+    async saveAssetHistory(months) { data.assetHistory = { ...data.assetHistory, ...months }; save(); },
     async bulk({ addTx = [], addAssets = [], deleteTx = [], deleteAssets = [], updateTx = [] }) {
       const dt = new Set(deleteTx); const da = new Set(deleteAssets);
       const ut = new Map(updateTx.map((u) => [u.id, u.data]));

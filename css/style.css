@@ -245,6 +245,33 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 .sheet-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
 
+/* ---------- 예산 ---------- */
+.ok { --state: var(--saving); } .warn { --state: var(--warn); } .over { --state: var(--expense); }
+.bar-track { position: relative; }
+.bar-track span.ok, .bar-track span.warn, .bar-track span.over,
+.progress.budget span { background: var(--state, var(--saving)); }
+.progress.budget { position: relative; overflow: visible; }
+.progress.budget span { border-radius: 99px; }
+.pace { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--ink); opacity: .35; border-radius: 2px; }
+.budget-total { display: grid; gap: 6px; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); margin-bottom: 16px; }
+.budget-total strong { font-size: 17px; }
+.pill.ok, .pill.warn, .pill.over { background: color-mix(in srgb, var(--state) 15%, transparent); color: var(--state); }
+.budget-rows .bar-row { grid-template-columns: minmax(64px, 96px) minmax(0, 1fr) auto; }
+.budget-rows .val { display: grid; justify-items: end; line-height: 1.25; }
+.budget-rows .val small { margin: 0; color: var(--muted); }
+.budget-rows .val em { font-style: normal; font-size: 12px; font-weight: 600; color: var(--state); }
+.budget-hint { margin: 6px 0 0; font-weight: 600; color: var(--state, var(--muted)); }
+.budget-grid { display: grid; gap: 8px; }
+.budget-line { display: grid; grid-template-columns: minmax(70px, 110px) minmax(0, 1fr) 78px; gap: 10px; align-items: center; font-size: 14px; }
+.budget-line .input { padding: 7px 12px; text-align: right; }
+.budget-line .avg { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+
+/* ---------- 순자산 추이 ---------- */
+.hist-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 10px; align-items: end;
+  margin-top: 14px; padding: 14px; border-radius: 14px; background: var(--surface-2); }
+.hist-actions { display: flex; gap: 6px; }
+@media (max-width: 720px) { .hist-form { grid-template-columns: 1fr 1fr; } .hist-actions { grid-column: 1 / -1; justify-content: flex-end; } }
+
 /* ---------- 일괄 등록 ---------- */
 dialog.sheet.wide { width: min(820px, calc(100vw - 24px)); }
 .sheet-body { display: grid; gap: 16px; padding: 18px 20px 20px; }
