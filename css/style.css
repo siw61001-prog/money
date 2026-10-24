@@ -61,9 +61,9 @@ body::before {
 }
 .brand-mark.big { width: 48px; height: 48px; border-radius: 12px; }
 .brand-mark.big::after { inset: 15px 11px; border-width: 3px; }
-/* 와사비 베어: img/wasabi-bear.png 가 있을 때만 보인다 (없으면 기본 마크) */
+/* 와사비 베어: 로고는 img/wasabi-head.png(귀 포함 머리), 그림은 img/wasabi-bears.png. 파일이 없으면 기본 마크 */
 .mascot { display: block; object-fit: contain; flex: none; }
-.mascot-brand { width: 32px; height: 32px; }
+.mascot-brand { width: 40px; height: 40px; margin: -4px 0; }
 .mascot-login { width: min(300px, 80vw); height: auto; }
 .mascot-group { width: min(240px, 100%); height: auto; margin: 18px auto 0; }
 .mode-badge {
