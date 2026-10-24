@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261025a';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025a';
+import { createStore, MEMBERS } from './store.js?v=20261025b';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025b';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -1975,7 +1975,24 @@ function bind() {
 }
 
 /* ---------- 시작 ---------- */
+// GitHub Pages는 index.html을 브라우저에 최대 10분 저장해 둔다. 서버의 최신 index.html이 가리키는
+// 앱 버전과 지금 실행 중인 버전이 다르면 한 번 새로고침해서 바로 새 버전을 쓰게 한다.
+async function checkNewVersion() {
+  const mine = new URL(import.meta.url).searchParams.get('v');
+  if (!mine || location.hostname === 'localhost') return;
+  try {
+    const html = await fetch(`./?nocache=${Date.now()}`, { cache: 'no-store' }).then((r) => r.text());
+    const live = html.match(/app\.js\?v=([\w-]+)/)?.[1];
+    if (!live || live === mine) return;
+    const key = `reloaded-for-${live}`;
+    if (sessionStorage.getItem(key)) return; // 새로고침해도 그대로면 반복하지 않는다
+    sessionStorage.setItem(key, '1');
+    location.reload();
+  } catch { /* 오프라인 등: 지금 버전 그대로 쓴다 */ }
+}
+
 async function start() {
+  checkNewVersion();
   bind();
   renderChrome();
   try {
