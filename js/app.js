@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261024b';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261024b';
+import { createStore, MEMBERS } from './store.js?v=20261024c';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261024c';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -227,7 +227,6 @@ function renderDashboard() {
           <div class="goal-top"><span>${monthNo}월 남은 돈</span><span class="${cur.left >= 0 ? 'c-saving' : 'c-expense'}"><strong>${won(cur.left)}</strong></span></div>
           <span class="hint">수입에서 지출과 정기 저축을 뺀 금액</span>
         </div>
-        <img class="mascot mascot-group" src="img/wasabi-bears.png" alt="" onerror="this.remove()">
       </article>
 
       ${perPerson}
