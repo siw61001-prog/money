@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261025e';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025e';
+import { createStore, MEMBERS } from './store.js?v=20261025f';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025f';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -194,28 +194,26 @@ function renderDashboard() {
     <article class="card span-12">
       <div class="card-head"><h2>사람별 ${monthNo}월 비교</h2><span class="sub">통합 = ${MEMBERS.join(' + ')}</span></div>
       <div class="table-wrap"><table>
-        <thead><tr><th>이름</th><th>수입</th><th>고정비용</th><th>소비지출</th><th>정기 저축</th><th>실제 저축</th><th>저축률</th></tr></thead>
+        <thead><tr><th>이름</th><th>수입</th><th>고정비용</th><th>소비지출</th><th>실제 저축</th><th>저축률</th></tr></thead>
         <tbody>
           ${MEMBERS.map((m) => {
             const s = stats(inMonth(scopedTx(m), S.ym));
             return `<tr><td><span class="dot" style="background:${memberColor(m)}"></span> ${esc(m)}</td>
               <td class="c-income">${fmt(s.income)}</td><td>${fmt(s.fixed)}</td><td>${fmt(s.variable)}</td>
-              <td>${fmt(s.saving)}</td><td class="${s.saved >= 0 ? 'c-saving' : 'c-expense'}">${fmt(s.saved)}</td><td>${pct(s.rate)}</td></tr>`;
+              <td class="${s.saved >= 0 ? 'c-saving' : 'c-expense'}">${fmt(s.saved)}</td><td>${pct(s.rate)}</td></tr>`;
           }).join('')}
           <tr class="total"><td>합계</td><td class="c-income">${fmt(cur.income)}</td><td>${fmt(cur.fixed)}</td><td>${fmt(cur.variable)}</td>
-            <td>${fmt(cur.saving)}</td><td class="${cur.saved >= 0 ? 'c-saving' : 'c-expense'}">${fmt(cur.saved)}</td><td>${pct(cur.rate)}</td></tr>
+            <td class="${cur.saved >= 0 ? 'c-saving' : 'c-expense'}">${fmt(cur.saved)}</td><td>${pct(cur.rate)}</td></tr>
         </tbody>
       </table></div>
     </article>` : '';
 
   $('#view-dashboard').innerHTML = `
-    <div class="kpis">
+    <div class="kpis kpis-3">
       <div class="kpi"><div class="k-label">수입</div><div class="k-value c-income">${won(cur.income)}</div>
         <div class="k-foot">${deltaText(cur.income, prev.income, false) || '&nbsp;'}</div></div>
       <div class="kpi"><div class="k-label">지출 (고정+소비)</div><div class="k-value c-expense">${won(cur.spend)}</div>
         <div class="k-foot">고정 ${shortWon(cur.fixed)} · 소비 ${shortWon(cur.variable)}</div></div>
-      <div class="kpi"><div class="k-label">정기 저축</div><div class="k-value">${won(cur.saving)}</div>
-        <div class="k-foot">고정비용 중 ${SAVING_CATS.join('·')}</div></div>
       <div class="kpi hero"><div class="k-label">실제 저축 · 저축률 ${pct(cur.rate)}</div><div class="k-value">${won(cur.saved)}</div>
         <div class="k-foot">수입 − 고정비용 − 소비지출</div></div>
     </div>
@@ -236,7 +234,7 @@ function renderDashboard() {
         </div>
         <div class="goal-row">
           <div class="goal-top"><span>${monthNo}월 남은 돈</span><span class="${cur.left >= 0 ? 'c-saving' : 'c-expense'}"><strong>${won(cur.left)}</strong></span></div>
-          <span class="hint">수입에서 지출과 정기 저축을 뺀 금액</span>
+          <span class="hint">수입에서 지출과 적금·저축 이체를 뺀 금액</span>
         </div>
       </article>
 

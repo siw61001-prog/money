@@ -113,6 +113,7 @@ body::before {
 .card-head .sub { color: var(--muted); font-size: 13px; }
 
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.kpis.kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; min-width: 0; box-shadow: var(--shadow); position: relative; overflow: hidden; }
 .kpi .k-label { font-size: 13px; color: var(--muted); font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .kpi .k-value { font-size: clamp(20px, 2.4vw, 26px); font-weight: 750; letter-spacing: -.02em; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -393,7 +394,8 @@ dialog.sheet.wide { width: min(820px, calc(100vw - 24px)); }
 /* ---------- 반응형 ---------- */
 @media (max-width: 960px) {
   .span-8, .span-7, .span-6, .span-5, .span-4 { grid-column: span 12; }
-  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis, .kpis.kpis-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpis-3 .kpi.hero { grid-column: 1 / -1; } /* 세 칸일 때 실제 저축은 한 줄 전체 */
   .settings-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 720px) {
