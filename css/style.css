@@ -292,7 +292,16 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 .budget-line { display: grid; grid-template-columns: minmax(70px, 110px) minmax(0, 1fr) 78px; gap: 10px; align-items: center; font-size: 14px; }
 .budget-line .input { padding: 7px 12px; text-align: right; }
 .budget-line .avg { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
-.budget-line { grid-template-columns: minmax(80px, 130px) minmax(0, 1fr) 72px 32px; }
+.budget-line { grid-template-columns: minmax(80px, 130px) minmax(0, 1fr) 76px 92px 32px; }
+.budget-line.head { font-size: 12px; font-weight: 600; color: var(--muted); }
+.budget-line.head span:nth-child(2), .budget-line.head span:nth-child(3) { text-align: center; }
+.count-input { display: flex; align-items: center; gap: 4px; }
+.count-input .input { text-align: right; padding-inline: 8px; }
+.count-input span { font-size: 13px; color: var(--muted); }
+@media (max-width: 720px) {
+  .budget-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 64px 30px; }
+  .budget-line .avg, .budget-line.head span:nth-child(4) { display: none; }
+}
 .icon-btn.small { width: 30px; height: 30px; font-size: 14px; }
 .budget-add { display: flex; gap: 8px; align-items: center; padding: 10px; border-radius: 12px; border: 1px dashed var(--line); }
 .budget-add select { flex: 1; min-width: 0; }
@@ -336,6 +345,8 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 .status-summary strong { font-size: 20px; letter-spacing: -.02em; }
 .status-summary .hint { font-size: 12px; }
 .status-chips { display: flex; gap: 6px; align-self: center; }
+.count-goals { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 8px; }
+.count-goals .label { font-size: 12.5px; margin-right: 2px; }
 .muted-tag { font-size: 12px; font-weight: 600; color: var(--muted); margin-left: 4px; }
 .ok-text { color: var(--saving); } .warn-text { color: var(--warn); } .over-text { color: var(--expense); }
 

@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261025h';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025h';
+import { createStore, MEMBERS } from './store.js?v=20261026a';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261026a';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -281,6 +281,25 @@ function renderDashboard() {
 
 /* ---------- 분류별 사용 현황 (대시보드 맨 위) ---------- */
 // 이번 달 분류별로 통합 예산 대비 얼마나 썼는지 실시간으로 보여준다. 내역이 저장되면 바로 다시 그려진다.
+// 횟수 목표: 예산 카드 줄 옆 작은 표시와, 사용 현황 아래 한 줄 요약
+function countBadge(key) {
+  const goal = householdCounts()[key];
+  if (!goal) return '';
+  const used = unitCount(key, S.ym);
+  return `<em class="${countState(used, goal)}">${used}/${goal}회</em>`;
+}
+function countGoalsLine() {
+  const goals = Object.entries(householdCounts());
+  if (!goals.length) return '';
+  return `<div class="count-goals"><span class="label">횟수 목표</span>${goals.sort(([a], [b]) => foodFirst(a) - foodFirst(b)).map(([k, g]) => {
+    const used = unitCount(k, S.ym);
+    return `<span class="pill ${countState(used, g)}">${esc(unitLabel(k))} ${used}/${g}회${used > g ? ` (${used - g}회 초과)` : ''}</span>`;
+  }).join('')}</div>`;
+}
+
+// 식비(전체·하위 분류)를 항상 맨 위에
+const foodFirst = (key) => (key === '식비' || key.startsWith('식비|') ? 0 : 1);
+
 function statusRows(hhCats) {
   const budgets = householdBudget();
   const spent = new Map(hhCats.map(([c, v]) => [c, v.sum]));
@@ -292,7 +311,8 @@ function statusRows(hhCats) {
     const s = unitSpent(spent, c);
     const b = budgets[c] || 0;
     return { c, spent: s, budget: b, state: b ? budgetState(s, b, prog.elapsed) : 'none' };
-  }).sort((a, b) => (b.budget ? b.spent / b.budget : -1) - (a.budget ? a.spent / a.budget : -1) || b.spent - a.spent);
+  }).sort((a, b) => foodFirst(a.c) - foodFirst(b.c)
+    || (b.budget ? b.spent / b.budget : -1) - (a.budget ? a.spent / a.budget : -1) || b.spent - a.spent);
 }
 
 function statusCard(hhCats, monthNo) {
@@ -323,6 +343,7 @@ function statusCard(hhCats, monthNo) {
     ${(tBudget ? budgeted.length : rows.length)
       ? `<div class="chart-box" style="height:${Math.max(160, (tBudget ? budgeted.length : rows.length) * 30 + 40)}px"><canvas id="chart-status" aria-label="분류별 예산 대비 사용률 막대그래프"></canvas></div>`
       : `<p class="empty">${monthNo}월 소비지출이 아직 없어요.</p>`}
+    ${countGoalsLine()}
     ${tBudget && rows.some((r) => !r.budget && r.spent)
       ? `<p class="hint no-budget">예산 없는 분류: ${rows.filter((r) => !r.budget && r.spent).map((r) => `${esc(unitLabel(r.c))} ${shortWon(r.spent)}`).join(' · ')}</p>` : ''}
     ${!tBudget ? '<p class="hint">설정 → 분류별 월 예산을 정하면 분류마다 예산의 몇 %를 썼는지 보여드려요. <a href="#settings">예산 정하기 →</a></p>'
@@ -377,10 +398,12 @@ function drawStatusChart(hhCats) {
   const prog = monthProgress(S.ym);
   const color = (st) => cssVar(st === 'over' ? '--expense' : st === 'warn' ? '--warn' : st === 'ok' ? '--saving' : '--muted');
   const ratio = (r) => (r.spent / r.budget) * 100;
-  const maxPct = byBudget ? Math.max(100, ...rows.map(ratio)) : 0;
-  const axisMax = byBudget ? Math.min(200, Math.ceil(maxPct / 20) * 20 + (maxPct > 100 ? 20 : 0)) : undefined;
+  // 가로축은 125%까지만 (넘은 분류는 막대를 125%에서 자르고 숫자로 실제 값을 보여준다)
+  const axisMax = byBudget ? 125 : undefined;
   const value = (r) => (byBudget ? Math.min(ratio(r), axisMax) : r.spent);
-  const labels = rows.map((r) => (byBudget ? `${Math.round(ratio(r))}% · ${shortWon(r.spent)} / ${shortWon(r.budget)}` : shortWon(r.spent)));
+  const counts = householdCounts();
+  const cnt = (r) => (counts[r.c] ? ` · ${unitCount(r.c, S.ym)}/${counts[r.c]}회` : '');
+  const labels = rows.map((r) => (byBudget ? `${Math.round(ratio(r))}% · ${shortWon(r.spent)} / ${shortWon(r.budget)}${cnt(r)}` : `${shortWon(r.spent)}${cnt(r)}`));
   const datasets = [{
     label: '사용', data: rows.map(value), backgroundColor: rows.map((r) => color(r.state)),
     borderRadius: 5, barPercentage: 0.6, categoryPercentage: 0.9, grouped: false, order: 1,
@@ -532,6 +555,13 @@ function householdBudget() {
   return out;
 }
 const budgetsOf = () => householdBudget();
+// 목표 횟수 (예: 배달음식 월 4회). 금액 목표와 따로 저장한다.
+const householdCounts = () => {
+  const c = (S.settings.budgetCounts || {})[SHARED] || {};
+  return Object.fromEntries(Object.entries(c).filter(([, v]) => Number(v) > 0).map(([k, v]) => [k, Number(v)]));
+};
+const unitCount = (key, ym, exceptId = null) => S.tx.filter((t) => unitMatch(key, t) && t.date.startsWith(ym) && t.id !== exceptId).length;
+const countState = (used, goal) => (used > goal ? 'over' : used >= goal * 0.8 ? 'warn' : 'ok');
 // 예산과 비교할 지출: 예산이 통합이라 사람 화면에서도 비교 기준은 두 사람 합산
 const budgetSpent = (ym, cat) => S.tx.filter((t) => t.type === 'variable' && t.category === cat && t.date.startsWith(ym))
   .reduce((a, t) => a + t.amount, 0);
@@ -657,7 +687,7 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
   const totalState = budgetState(totalSpent, totalBudget, prog.elapsed);
   const leftMoney = totalBudget - totalSpent;
   const rows = budgeted.map((c) => ({ c, spent: spentFor(c), budget: budgets[c] }))
-    .sort((a, b) => b.spent / b.budget - a.spent / a.budget);
+    .sort((a, b) => foodFirst(a.c) - foodFirst(b.c) || b.spent / b.budget - a.spent / a.budget);
   // 예산 없는 단위 (상위 분류 전체에 예산이 있으면 그 하위 분류는 이미 포함된 것으로 본다)
   const extra = cats.filter(([c]) => !budgets[c] && !(c.includes('|') && budgets[c.split('|')[0]]));
   const message = !prog.current ? (leftMoney >= 0 ? `예산보다 ${won(leftMoney)} 덜 썼어요` : `예산을 ${won(-leftMoney)} 넘었어요`)
@@ -678,7 +708,7 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
         <span class="bar-track"><span class="${st}" style="width:${Math.min(100, (r.spent / r.budget) * 100)}%"></span>
           ${prog.current ? `<i class="pace" style="left:${prog.elapsed * 100}%"></i>` : ''}</span>
         <span class="val">${fmt(r.spent)}<small>/ ${shortWon(r.budget)}</small>
-          <em class="${st}">${left >= 0 ? `남음 ${shortWon(left)}` : `${shortWon(-left)} 초과`}</em></span>`, monthTx);
+          <em class="${st}">${left >= 0 ? `남음 ${shortWon(left)}` : `${shortWon(-left)} 초과`}</em>${countBadge(r.c)}</span>`, monthTx);
     }).join('')}</div>
     ${extra.length ? `<h3 class="sub-head">예산 없는 분류</h3>
     <div class="bars budget-rows">${extra.map(([c, v]) => catItem(c, `<span class="name">${esc(unitLabel(c))}</span>
@@ -1257,19 +1287,22 @@ async function runMerge() {
   const kept = vars.filter((c) => !from.includes(c) && c !== to);
   kept.splice(Number.isFinite(at) ? Math.min(at, kept.length) : kept.length, 0, to);
   st.categories.variable = kept;
-  for (const m of Object.keys(st.budgets || {})) {
-    const b = { ...((st.budgets || {})[m] || {}) };
-    let moved = 0;
-    from.forEach((c) => {
-      moved += Number(b[c]) || 0; delete b[c];
-      // '식비|마트' 같은 하위 분류 목표는 새 분류 이름으로 옮긴다
-      Object.keys(b).filter((k) => k.startsWith(`${c}|`)).forEach((k) => {
-        const nk = `${to}|${k.split('|')[1]}`;
-        b[nk] = (Number(b[nk]) || 0) + (Number(b[k]) || 0); delete b[k];
+  // 금액 목표(budgets)와 횟수 목표(budgetCounts)를 새 분류 이름으로 옮겨 더한다
+  for (const field of ['budgets', 'budgetCounts']) {
+    for (const m of Object.keys(st[field] || {})) {
+      const b = { ...((st[field] || {})[m] || {}) };
+      let moved = 0;
+      from.forEach((c) => {
+        moved += Number(b[c]) || 0; delete b[c];
+        // '식비|마트' 같은 하위 분류 목표는 새 분류 이름으로 옮긴다
+        Object.keys(b).filter((k) => k.startsWith(`${c}|`)).forEach((k) => {
+          const nk = `${to}|${k.split('|')[1]}`;
+          b[nk] = (Number(b[nk]) || 0) + (Number(b[k]) || 0); delete b[k];
+        });
       });
-    });
-    if (moved) b[to] = (Number(b[to]) || 0) + moved;
-    st.budgets = { ...(st.budgets || {}), [m]: b };
+      if (moved) b[to] = (Number(b[to]) || 0) + moved;
+      st[field] = { ...(st[field] || {}), [m]: b };
+    }
   }
   await S.store.saveSettings(st);
   S.mergeFrom = new Set(); S.mergeTo = ''; S.mergeArmed = false;
@@ -1296,8 +1329,23 @@ function budgetCandidates() {
 // 편집 중인 입력값을 목록에 옮겨 둔다 (추가·삭제로 다시 그리기 전에)
 function syncBudgetDraft() {
   if (!S.budgetDraft) return;
-  const vals = new Map($$('[data-budget-cat]', $('#view-settings')).map((i) => [i.dataset.budgetCat, i.value]));
-  S.budgetDraft = S.budgetDraft.map(([k, v]) => [k, vals.has(k) ? vals.get(k) : v]);
+  const vs = $('#view-settings');
+  const vals = new Map($$('[data-budget-cat]', vs).map((i) => [i.dataset.budgetCat, i.value]));
+  const cnts = new Map($$('[data-budget-count]', vs).map((i) => [i.dataset.budgetCount, i.value]));
+  S.budgetDraft = S.budgetDraft.map(([k, v, n]) => [k, vals.has(k) ? vals.get(k) : v, cnts.has(k) ? cnts.get(k) : n]);
+}
+
+// 최근 n달(기록 있는 달만) 평균 사용 횟수
+function avgCount(key, endYm, n = 3) {
+  let sum = 0;
+  let months = 0;
+  for (let i = 1; i <= n; i++) {
+    const ym = shiftYM(endYm, -i);
+    if (!S.tx.some((t) => t.date.startsWith(ym))) continue;
+    months += 1;
+    sum += unitCount(key, ym);
+  }
+  return months ? sum / months : 0;
 }
 
 function renderSettings() {
@@ -1305,7 +1353,12 @@ function renderSettings() {
   const list = (arr) => esc(arr.join(', '));
   const thisYm = today().slice(0, 7);
   // 편집 중인 예산 목록(저장 전). 처음 열 때 저장된 예산으로 채운다.
-  if (!S.budgetDraft) S.budgetDraft = Object.entries(householdBudget()).map(([k, v]) => [k, fmt(v)]);
+  if (!S.budgetDraft) {
+    const amounts = householdBudget();
+    const counts = householdCounts();
+    S.budgetDraft = [...new Set([...Object.keys(amounts), ...Object.keys(counts)])]
+      .map((k) => [k, amounts[k] ? fmt(amounts[k]) : '', counts[k] ? String(counts[k]) : '']);
+  }
   const draftKeys = new Set(S.budgetDraft.map(([k]) => k));
   const addable = budgetCandidates().filter((k) => !draftKeys.has(k));
   const draftTotal = S.budgetDraft.reduce((a, [, v]) => a + parseAmount(v), 0);
@@ -1314,12 +1367,16 @@ function renderSettings() {
       <article class="card budget-editor" id="budget-card">
         <div class="card-head"><h2>분류별 월 목표(예산)</h2><span class="sub">통합 (${MEMBERS.join(' + ')})</span></div>
         <form class="form-stack" id="budget-form">
-          <p class="hint">목표를 정하고 싶은 항목만 추가하세요. 식비는 전체 또는 마트·배달음식 같은 하위 분류별로 정할 수 있어요. 회색 숫자는 두 사람 합산 지난 3달 평균이에요.</p>
-          ${S.budgetDraft.length ? `<div class="budget-grid">${S.budgetDraft.map(([k, v]) => {
+          <p class="hint">목표를 정하고 싶은 항목만 추가하세요. 식비는 전체 또는 마트·배달음식 같은 하위 분류별로 정할 수 있어요. 횟수는 한 달에 몇 번까지 쓸지예요(비우면 횟수 목표 없음). 회색 숫자는 두 사람 합산 지난 3달 평균이에요.</p>
+          ${S.budgetDraft.length ? `<div class="budget-grid">
+            <div class="budget-line head"><span>항목</span><span>금액</span><span>횟수</span><span>지난 3달 평균</span><span></span></div>
+            ${S.budgetDraft.map(([k, v, n]) => {
             const avg = avgSpend('all', k, thisYm);
+            const avgN = avgCount(k, thisYm);
             return `<div class="budget-line"><span class="name">${esc(unitLabel(k))}</span>
               <input class="input" data-budget-cat="${esc(k)}" inputmode="numeric" placeholder="금액" value="${esc(v)}" aria-label="${esc(unitLabel(k))} 목표 금액">
-              <span class="avg" data-avg="${Math.round(avg / 10000) * 10000}">${avg ? `평균 ${shortWon(avg)}` : ''}</span>
+              <span class="count-input"><input class="input" data-budget-count="${esc(k)}" inputmode="numeric" placeholder="–" value="${esc(n || '')}" aria-label="${esc(unitLabel(k))} 목표 횟수"><span>회</span></span>
+              <span class="avg" data-avg="${Math.round(avg / 10000) * 10000}" data-avg-count="${Math.round(avgN)}">${avg ? `${shortWon(avg)} · ${Math.round(avgN * 10) / 10}회` : ''}</span>
               <button type="button" class="icon-btn small" data-budget-del="${esc(k)}" aria-label="${esc(unitLabel(k))} 목표 삭제">✕</button></div>`;
           }).join('')}</div>` : '<p class="empty">아직 정한 목표가 없어요. 아래에서 항목을 추가하세요.</p>'}
           ${addable.length ? `<div class="budget-add">
@@ -1919,19 +1976,35 @@ function updateBudgetHint() {
   const el = $('#tx-budget');
   const date = $('#tx-date').value;
   // 하위 분류 목표가 있으면 그것('식비 · 마트'), 없으면 분류 전체 목표('식비')로 안내
+  // 금액이나 횟수 목표가 있는 단위 중 하위 분류 쪽을 먼저 본다
   const budgets = budgetsOf();
+  const counts = householdCounts();
+  const has = (k) => k && (budgets[k] || counts[k]);
   const subKey = form.sub ? `${form.category}|${form.sub}` : '';
-  const key = form.type !== 'variable' || !form.category ? '' : budgets[subKey] ? subKey : budgets[form.category] ? form.category : '';
-  const budget = key ? budgets[key] : 0;
-  if (!budget || !date) { el.hidden = true; return; }
+  const key = form.type !== 'variable' || !form.category ? '' : has(subKey) ? subKey : has(form.category) ? form.category : '';
+  if (!key || !date) { el.hidden = true; return; }
   const ym = date.slice(0, 7);
+  const budget = budgets[key] || 0;
+  const goalN = counts[key] || 0;
   const spent = S.tx.filter((t) => unitMatch(key, t) && t.date.startsWith(ym) && t.id !== form.id).reduce((a, t) => a + t.amount, 0);
+  const usedN = unitCount(key, ym, form.id);
   const amount = parseAmount($('#tx-amount').value);
   const after = spent + amount;
-  const st = budgetState(after, budget, monthProgress(ym).elapsed);
+  const parts = [];
+  let st = 'ok';
+  if (budget) {
+    st = budgetState(after, budget, monthProgress(ym).elapsed);
+    parts.push(`목표 ${won(budget)} 중 ${won(spent)} 사용`
+      + (amount ? ` → 이번 것까지 ${won(after)} (${after > budget ? `${won(after - budget)} 초과` : `남음 ${won(budget - after)}`})` : ` · 남음 ${won(Math.max(0, budget - spent))}`));
+  }
+  if (goalN) {
+    const nAfter = usedN + 1; // 지금 입력하는 것까지
+    const cs = countState(nAfter, goalN);
+    if (cs === 'over' || (cs === 'warn' && st === 'ok')) st = cs;
+    parts.push(`횟수 ${usedN}/${goalN}회${form.id ? '' : ` → 이번 것까지 ${nAfter}회${nAfter > goalN ? ` (${nAfter - goalN}회 초과)` : ''}`}`);
+  }
   el.className = `hint budget-hint ${st}`;
-  el.textContent = `${Number(ym.slice(5))}월 ${unitLabel(key)} 통합 목표 ${won(budget)} 중 ${won(spent)} 사용`
-    + (amount ? ` → 이번 것까지 ${won(after)} (${after > budget ? `${won(after - budget)} 초과` : `남음 ${won(budget - after)}`})` : ` · 남음 ${won(Math.max(0, budget - spent))}`);
+  el.textContent = `${Number(ym.slice(5))}월 ${unitLabel(key)} 통합 ${parts.join(' · ')}`;
   el.hidden = false;
 }
 
@@ -2145,15 +2218,20 @@ function bind() {
       await S.store.saveSettings(st); toast('분류를 저장했습니다');
     } else if (e.target.id === 'budget-form') {
       const mine = {};
+      const counts = {};
       $$('[data-budget-cat]', e.target).forEach((i) => { const v = parseAmount(i.value); if (v > 0) mine[i.dataset.budgetCat] = v; });
+      $$('[data-budget-count]', e.target).forEach((i) => { const n = parseAmount(i.value); if (n > 0) counts[i.dataset.budgetCount] = n; });
       // 통합 예산만 남기고 예전 사람별 예산은 지운다. 목록에서 지운 항목은 목표에서도 빠진다.
       st.budgets = { [SHARED]: mine };
+      st.budgetCounts = { [SHARED]: counts };
       S.budgetDraft = null;
-      await S.store.saveSettings(st); toast(`목표 ${Object.keys(mine).length}개를 저장했습니다`);
+      const n = new Set([...Object.keys(mine), ...Object.keys(counts)]).size;
+      await S.store.saveSettings(st); toast(`목표 ${n}개를 저장했습니다`);
     }
   });
   vs.addEventListener('input', (e) => {
     if (e.target.id === 'merge-to') { S.mergeTo = e.target.value; S.mergeArmed = false; refreshMergeUI(); return; }
+    if (e.target.dataset.budgetCount != null) { e.target.value = e.target.value.replace(/[^\d]/g, '').slice(0, 3); return; }
     if (e.target.dataset.budgetCat == null) return;
     formatAmountInput(e.target);
     const total = $$('[data-budget-cat]', vs).reduce((a, i) => a + parseAmount(i.value), 0);
@@ -2193,7 +2271,7 @@ function bind() {
       syncBudgetDraft();
       const key = $('#budget-add-key').value;
       const avg = Math.round(avgSpend('all', key, today().slice(0, 7)) / 10000) * 10000;
-      S.budgetDraft.push([key, avg ? fmt(avg) : '']);
+      S.budgetDraft.push([key, avg ? fmt(avg) : '', '']);
       renderSettings();
       $(`[data-budget-cat="${CSS.escape(key)}"]`)?.focus();
       return;
@@ -2210,6 +2288,10 @@ function bind() {
       $$('[data-budget-cat]', vs).forEach((i) => {
         const avg = Number(i.closest('.budget-line').querySelector('.avg').dataset.avg);
         if (!parseAmount(i.value) && avg > 0) i.value = fmt(avg);
+      });
+      $$('[data-budget-count]', vs).forEach((i) => {
+        const avgN = Number(i.closest('.budget-line').querySelector('.avg').dataset.avgCount);
+        if (!i.value && avgN > 0) i.value = String(avgN);
       });
       $('#budget-sum').textContent = `합계 ${won($$('[data-budget-cat]', vs).reduce((a, i) => a + parseAmount(i.value), 0))} (저장 전)`;
     }
