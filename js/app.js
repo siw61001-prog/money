@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261025c';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025c';
+import { createStore, MEMBERS } from './store.js?v=20261025d';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261025d';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -31,7 +31,6 @@ const S = {
   ym: today().slice(0, 7),
   filter: { type: 'all', cat: '', q: '' },
   imports: [],
-  budgetWho: '',
   openCats: new Set(), // 대시보드에서 펼쳐 둔 분류
   openThree: new Set(), // 최근 3개월 카드에서 펼쳐 둔 분류
   sel: new Set(), // 내역 화면에서 체크한 내역 id
@@ -178,6 +177,17 @@ function renderDashboard() {
   const cats = [...byCat.entries()].sort((a, b) => b[1].sum - a[1].sum);
   const catMax = cats[0]?.[1].sum || 1;
   const fixedList = monthTx.filter((t) => t.type === 'fixed').sort((a, b) => b.amount - a.amount);
+  // 예산은 통합이라 예산 카드는 사람 화면에서도 두 사람 합산 지출로 비교한다
+  const hhTx = inMonth(S.tx, S.ym);
+  const hhCatMap = new Map();
+  for (const t of hhTx) {
+    if (t.type !== 'variable') continue;
+    const c = hhCatMap.get(t.category) || { sum: 0, n: 0 };
+    c.sum += t.amount; c.n += 1;
+    hhCatMap.set(t.category, c);
+  }
+  const hhCats = [...hhCatMap.entries()].sort((a, b) => b[1].sum - a[1].sum);
+  const hhVariable = hhCats.reduce((a, [, c]) => a + c.sum, 0);
   const scopeName = S.who === 'all' ? '통합' : S.who;
 
   const perPerson = S.who === 'all' ? `
@@ -211,10 +221,7 @@ function renderDashboard() {
     </div>
 
     <div class="grid">
-      <article class="card span-8">
-        <div class="card-head"><h2>${year}년 월별 흐름</h2><span class="sub">${esc(scopeName)} · 막대: 수입/지출, 선: 실제 저축</span></div>
-        <div class="chart-box"><canvas id="chart-year" aria-label="월별 수입, 지출, 저축 차트"></canvas></div>
-      </article>
+      ${statusCard(hhCats, monthNo)}
       <article class="card span-4">
         <div class="card-head"><h2>저축 목표</h2><span class="sub">월 목표 ${won(goal)}</span></div>
         <div class="goal-row">
@@ -235,7 +242,7 @@ function renderDashboard() {
 
       ${perPerson}
 
-      ${budgetCard(cats, catMax, cur, monthNo, monthTx)}
+      ${budgetCard(hhCats, hhCats[0]?.[1].sum || 1, { variable: hhVariable }, monthNo, hhTx)}
 
       ${threeMonthCard(list)}
 
@@ -254,11 +261,104 @@ function renderDashboard() {
           </div>
         </div>
       </article>
+
+      <article class="card span-12">
+        <div class="card-head"><h2>${year}년 월별 흐름</h2><span class="sub">${esc(scopeName)} · 막대: 수입/지출, 선: 실제 저축</span></div>
+        <div class="chart-box"><canvas id="chart-year" aria-label="월별 수입, 지출, 저축 차트"></canvas></div>
+      </article>
     </div>`;
 
+  drawStatusChart(hhCats);
   drawYearChart(months, monthly);
   drawDailyChart(monthTx);
   drawThreeMonthChart(list);
+}
+
+/* ---------- 분류별 사용 현황 (대시보드 맨 위) ---------- */
+// 이번 달 분류별로 통합 예산 대비 얼마나 썼는지 실시간으로 보여준다. 내역이 저장되면 바로 다시 그려진다.
+function statusRows(hhCats) {
+  const budgets = householdBudget();
+  const spent = new Map(hhCats.map(([c, v]) => [c, v.sum]));
+  const names = [...new Set([...Object.keys(budgets), ...spent.keys()])];
+  const prog = monthProgress(S.ym);
+  return names.map((c) => {
+    const s = spent.get(c) || 0;
+    const b = budgets[c] || 0;
+    return { c, spent: s, budget: b, state: b ? budgetState(s, b, prog.elapsed) : 'none' };
+  }).sort((a, b) => (b.budget ? b.spent / b.budget : -1) - (a.budget ? a.spent / a.budget : -1) || b.spent - a.spent);
+}
+
+function statusCard(hhCats, monthNo) {
+  const rows = statusRows(hhCats);
+  const prog = monthProgress(S.ym);
+  const budgeted = rows.filter((r) => r.budget);
+  const tBudget = budgeted.reduce((a, r) => a + r.budget, 0);
+  const tSpent = budgeted.reduce((a, r) => a + r.spent, 0);
+  const allSpent = rows.reduce((a, r) => a + r.spent, 0);
+  const over = rows.filter((r) => r.state === 'over').length;
+  const warn = rows.filter((r) => r.state === 'warn').length;
+  const left = tBudget - tSpent;
+  const dayNo = Number(today().slice(8));
+  const daysInMonth = new Date(Number(S.ym.slice(0, 4)), Number(S.ym.slice(5)), 0).getDate();
+  const forecast = prog.current && dayNo ? Math.round((allSpent / dayNo) * daysInMonth) : 0;
+  const height = Math.max(160, rows.length * 30 + 40);
+  return `<article class="card span-8 status-card">
+    <div class="card-head"><h2>${monthNo}월 분류별 사용 현황</h2>
+      <span class="sub">통합 · ${prog.current ? `${dayNo}일 기준 실시간` : '월 마감'}${S.who !== 'all' ? ' · 예산은 두 사람 합산 기준' : ''}</span></div>
+    <div class="status-summary">
+      <div><span class="label">소비지출</span><strong>${won(allSpent)}</strong></div>
+      ${tBudget ? `<div><span class="label">예산 대비</span><strong class="${budgetState(tSpent, tBudget, prog.elapsed)}-text">${pct(tSpent / tBudget)}</strong>
+        <span class="hint">${won(tSpent)} / ${won(tBudget)}</span></div>
+      <div><span class="label">${left >= 0 ? '남은 예산' : '초과'}</span><strong class="${left >= 0 ? 'c-saving' : 'c-expense'}">${won(Math.abs(left))}</strong>
+        ${prog.current && left > 0 ? `<span class="hint">하루 ${won(Math.floor(left / prog.left))} · ${prog.left}일 남음</span>` : ''}</div>` : ''}
+      ${forecast ? `<div><span class="label">이 속도면 월말</span><strong>${won(forecast)}</strong></div>` : ''}
+      ${over || warn ? `<div class="status-chips">${over ? `<span class="pill over">초과 ${over}개</span>` : ''}${warn ? `<span class="pill warn">주의 ${warn}개</span>` : ''}</div>` : ''}
+    </div>
+    ${rows.length ? `<div class="chart-box" style="height:${height}px"><canvas id="chart-status" aria-label="분류별 예산 대비 사용 금액 막대그래프"></canvas></div>`
+      : `<p class="empty">${monthNo}월 소비지출이 아직 없어요.</p>`}
+    ${!tBudget ? '<p class="hint">설정 → 분류별 월 예산을 정하면 예산 대비 사용률이 함께 보여요. <a href="#settings">예산 정하기 →</a></p>'
+      : `<p class="hint">진한 막대가 쓴 금액, 연한 막대가 예산이에요. 초록은 여유, 주황은 80% 이상이거나 날짜보다 빨리 쓰는 중, 빨강은 초과예요.</p>`}
+  </article>`;
+}
+
+function drawStatusChart(hhCats) {
+  charts.status?.destroy();
+  const el = $('#chart-status');
+  if (!el || !chartDefaults()) return;
+  const rows = statusRows(hhCats);
+  const color = (st) => cssVar(st === 'over' ? '--expense' : st === 'warn' ? '--warn' : st === 'ok' ? '--saving' : '--muted');
+  charts.status = new Chart(el, {
+    type: 'bar',
+    data: {
+      labels: rows.map((r) => r.c),
+      datasets: [
+        { label: '사용', data: rows.map((r) => r.spent), backgroundColor: rows.map((r) => color(r.state)),
+          borderRadius: 5, barPercentage: 0.6, categoryPercentage: 0.9, grouped: false, order: 1 },
+        { label: '예산', data: rows.map((r) => r.budget || null), backgroundColor: 'rgba(138, 130, 116, .16)',
+          borderRadius: 5, barPercentage: 0.95, categoryPercentage: 0.9, grouped: false, order: 2 },
+      ],
+    },
+    options: {
+      indexAxis: 'y',
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          label: (c) => {
+            const r = rows[c.dataIndex];
+            if (c.datasetIndex === 1) return `예산 ${won(r.budget)}`;
+            if (!r.budget) return `사용 ${won(r.spent)} (예산 없음)`;
+            const left = r.budget - r.spent;
+            return `사용 ${won(r.spent)} · ${pct(r.spent / r.budget)} · ${left >= 0 ? `남음 ${won(left)}` : `${won(-left)} 초과`}`;
+          },
+        } },
+      },
+      scales: {
+        x: { ticks: { callback: (v) => shortWon(v) }, grid: { color: cssVar('--line') } },
+        y: { grid: { display: false }, ticks: { font: { size: 13, weight: '600' }, color: cssVar('--ink') } },
+      },
+    },
+  });
 }
 
 /* ---------- 최근 3개월 합산 지출 ---------- */
@@ -345,14 +445,22 @@ function drawThreeMonthChart(list) {
 
 /* ---------- 분류별 예산 ---------- */
 // 예산은 사람별 소비지출 분류의 월 금액. 통합 화면은 두 사람 예산의 합.
-function budgetsOf(who) {
+// 예산은 두 사람 합산(통합) 하나만 둔다: settings.budgets['통합'].
+// 예전 사람별 예산만 있으면 그 합을 통합 예산으로 쓴다 (설정에서 한 번 저장하면 통합으로 옮겨짐).
+const SHARED = '통합';
+function householdBudget() {
   const b = S.settings.budgets || {};
   const out = {};
-  for (const m of who === 'all' ? MEMBERS : [who]) {
-    for (const [c, v] of Object.entries(b[m] || {})) if (Number(v) > 0) out[c] = (out[c] || 0) + Number(v);
+  const sources = Object.keys(b[SHARED] || {}).length ? [b[SHARED]] : MEMBERS.map((m) => b[m] || {});
+  for (const src of sources) {
+    for (const [c, v] of Object.entries(src)) if (Number(v) > 0) out[c] = (out[c] || 0) + Number(v);
   }
   return out;
 }
+const budgetsOf = () => householdBudget();
+// 예산과 비교할 지출: 예산이 통합이라 사람 화면에서도 비교 기준은 두 사람 합산
+const budgetSpent = (ym, cat) => S.tx.filter((t) => t.type === 'variable' && t.category === cat && t.date.startsWith(ym))
+  .reduce((a, t) => a + t.amount, 0);
 
 // 이번 달이면 지난 날짜 비율과 남은 날 수, 지난 달은 다 지난 것으로 본다
 function monthProgress(ym) {
@@ -480,7 +588,7 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
     : leftMoney < 0 ? `벌써 예산을 ${won(-leftMoney)} 넘었어요`
       : `남은 ${prog.left}일 동안 하루 ${won(Math.floor(leftMoney / prog.left))}까지 쓸 수 있어요`;
   return `<article class="card span-6">
-    <div class="card-head"><h2>${monthNo}월 예산</h2><a class="sub" href="#settings" data-goto-budget>예산 수정 →</a></div>
+    <div class="card-head"><h2>${monthNo}월 예산 <small class="muted-tag">통합</small></h2><a class="sub" href="#settings" data-goto-budget>예산 수정 →</a></div>
     <div class="budget-total ${totalState}">
       <div class="goal-top"><span>예산 ${won(totalBudget)} 중 <strong>${won(totalSpent)}</strong> 사용</span><span class="pill ${totalState}">${pct(totalSpent / totalBudget)}</span></div>
       <div class="progress budget"><span class="${totalState}" style="width:${Math.min(100, (totalSpent / totalBudget) * 100)}%"></span>
@@ -1073,7 +1181,7 @@ async function runMerge() {
   const kept = vars.filter((c) => !from.includes(c) && c !== to);
   kept.splice(Number.isFinite(at) ? Math.min(at, kept.length) : kept.length, 0, to);
   st.categories.variable = kept;
-  for (const m of MEMBERS) {
+  for (const m of Object.keys(st.budgets || {})) {
     const b = { ...((st.budgets || {})[m] || {}) };
     let moved = 0;
     from.forEach((c) => { moved += Number(b[c]) || 0; delete b[c]; });
@@ -1096,21 +1204,17 @@ function refreshMergeUI() {
 function renderSettings() {
   const st = S.settings;
   const list = (arr) => esc(arr.join(', '));
-  if (!MEMBERS.includes(S.budgetWho)) S.budgetWho = S.who !== 'all' ? S.who : MEMBERS[0];
-  const bw = S.budgetWho;
-  const myBudget = (st.budgets || {})[bw] || {};
+  const myBudget = householdBudget();
   const thisYm = today().slice(0, 7);
-  const budgetCats = categoryOptions('variable');
+  const budgetCats = [...new Set([...categoryOptions('variable'), ...Object.keys(myBudget)])];
   $('#view-settings').innerHTML = `
     <div class="settings-grid">
       <article class="card budget-editor" id="budget-card">
-        <div class="card-head"><h2>분류별 월 예산</h2>
-          <div class="seg" id="budget-who">${MEMBERS.map((m) => `<button type="button" data-v="${esc(m)}" aria-pressed="${bw === m}">
-            <span class="dot" style="background:${memberColor(m)}"></span>${esc(m)}</button>`).join('')}</div></div>
+        <div class="card-head"><h2>분류별 월 예산</h2><span class="sub">통합 (${MEMBERS.join(' + ')})</span></div>
         <form class="form-stack" id="budget-form">
-          <p class="hint">${esc(bw)}님의 소비지출 분류별 한 달 예산이에요. 비워 두면 예산 없음으로 봅니다. 오른쪽 회색 숫자는 지난 3달 평균이에요.</p>
+          <p class="hint">두 사람이 함께 쓰는 한 달 예산이에요. 비워 두면 예산 없음으로 봅니다. 오른쪽 회색 숫자는 두 사람 합산 지난 3달 평균이에요.</p>
           <div class="budget-grid">${budgetCats.map((c) => {
-            const avg = avgSpend(bw, c, thisYm);
+            const avg = avgSpend('all', c, thisYm);
             return `<label class="budget-line"><span class="name">${esc(c)}</span>
               <input class="input" data-budget-cat="${esc(c)}" inputmode="numeric" placeholder="예산 없음" value="${myBudget[c] ? fmt(myBudget[c]) : ''}">
               <span class="avg" data-avg="${Math.round(avg / 10000) * 10000}">${avg ? `평균 ${shortWon(avg)}` : ''}</span></label>`;
@@ -1707,13 +1811,13 @@ function updateBudgetHint() {
   const budget = form.owner && form.type === 'variable' && form.category ? budgetsOf(form.owner)[form.category] : 0;
   if (!budget || !date) { el.hidden = true; return; }
   const ym = date.slice(0, 7);
-  const spent = S.tx.filter((t) => t.owner === form.owner && t.type === 'variable' && t.category === form.category
+  const spent = S.tx.filter((t) => t.type === 'variable' && t.category === form.category
     && t.date.startsWith(ym) && t.id !== form.id).reduce((a, t) => a + t.amount, 0);
   const amount = parseAmount($('#tx-amount').value);
   const after = spent + amount;
   const st = budgetState(after, budget, monthProgress(ym).elapsed);
   el.className = `hint budget-hint ${st}`;
-  el.textContent = `${Number(ym.slice(5))}월 ${form.category} 예산 ${won(budget)} 중 ${won(spent)} 사용`
+  el.textContent = `${Number(ym.slice(5))}월 ${form.category} 통합 예산 ${won(budget)} 중 ${won(spent)} 사용`
     + (amount ? ` → 이번 것까지 ${won(after)} (${after > budget ? `${won(after - budget)} 초과` : `남음 ${won(budget - after)}`})` : ` · 남음 ${won(Math.max(0, budget - spent))}`);
   el.hidden = false;
 }
@@ -1929,8 +2033,9 @@ function bind() {
     } else if (e.target.id === 'budget-form') {
       const mine = {};
       $$('[data-budget-cat]', e.target).forEach((i) => { const v = parseAmount(i.value); if (v > 0) mine[i.dataset.budgetCat] = v; });
-      st.budgets = { ...(st.budgets || {}), [S.budgetWho]: mine };
-      await S.store.saveSettings(st); toast(`${S.budgetWho}님 예산을 저장했습니다`);
+      // 통합 예산만 남기고 예전 사람별 예산은 지운다
+      st.budgets = { [SHARED]: mine };
+      await S.store.saveSettings(st); toast('통합 예산을 저장했습니다');
     }
   });
   vs.addEventListener('input', (e) => {
@@ -1970,8 +2075,6 @@ function bind() {
       S.mergeArmed = false; refreshMergeUI();
       return;
     }
-    const who = e.target.closest('#budget-who button');
-    if (who) { S.budgetWho = who.dataset.v; renderSettings(); }
     if (e.target.closest('#budget-fill-avg')) {
       $$('[data-budget-cat]', vs).forEach((i) => {
         const avg = Number(i.closest('.budget-line').querySelector('.avg').dataset.avg);
@@ -2008,7 +2111,6 @@ function bind() {
   $('#tx-amount').addEventListener('input', (e) => { formatAmountInput(e.target); updateBudgetHint(); });
   $('#tx-date').addEventListener('change', updateBudgetHint);
   $('#view-dashboard').addEventListener('click', (e) => {
-    if (e.target.closest('[data-goto-budget]') && S.who !== 'all') S.budgetWho = S.who;
     const edit = e.target.closest('[data-edit-tx]');
     if (edit) { openTx(S.tx.find((t) => t.id === edit.dataset.editTx)); return; }
     if (e.target.closest('[data-three-more]')) {
