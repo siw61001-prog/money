@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261024e';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261024e';
+import { createStore, MEMBERS } from './store.js?v=20261024f';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261024f';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -389,18 +389,18 @@ function avgSpend(who, cat, endYm, n = 3) {
 // 분류 줄을 누르면 그 달 그 분류의 내역(언제·무엇·얼마)이 아래로 펼쳐진다
 /* ---------- 세부 분류 ---------- */
 // 식비·간식은 가게 이름으로 세부 분류를 나눠 펼친 목록에서 묶어 보여준다. 위에서부터 먼저 맞는 것, 마지막은 나머지 전부.
+// 편의점은 무엇을 샀든 식비로 본다 (분류 추정·세부 분류 모두)
+const CONVENIENCE = ['편의점', 'GS25', '지에스25', 'CU', '씨유', '세븐일레븐', '이마트24', 'EMART24', '미니스톱'];
+const isConvenience = (memo) => { const m = normMemo(memo); return CONVENIENCE.some((w) => m.includes(normMemo(w))); };
+
 const SUB_RULES = {
   '식비': [
     ['배달', ['배민', '배달의민족', '쿠팡이츠', '요기요', '땡겨요', '배달', '야식', '치킨', '피자']],
+    ['편의점', CONVENIENCE], // '이마트24'가 장보기(이마트)에 걸리지 않게 먼저 본다
     ['장보기', ['이마트', '홈플러스', '롯데마트', '코스트코', '트레이더스', '하나로', '이지바이', '마트', '정육', '식자재', '농협', '쿠팡', '컬리']],
     ['외식', null],
   ],
-  '간식': [
-    ['편의점', ['편의점', 'GS25', '지에스25', 'CU', '씨유', '세븐일레븐', '이마트24', '미니스톱']],
-    ['카페·디저트', null],
-  ],
 };
-SUB_RULES['카페/간식'] = SUB_RULES['간식'];
 
 function subOf(t) {
   const rules = SUB_RULES[t.category];
@@ -1142,9 +1142,9 @@ const txKey = (t) => `${t.owner}|${t.date}|${t.type}|${t.amount}|${(t.memo || ''
 const KEYWORD_RULES = [
   ['통신/구독', ['ANTHROPIC', 'CLAUDE', 'OPENAI', 'NETFLIX', '넷플릭스', 'YOUTUBE', '유튜브', '구글페이먼트', 'GOOGLE',
     'SPOTIFY', '스포티파이', 'APPLE.COM', '애플코리아', '디즈니플러스', '티빙', 'WAVVE', '왓챠', '쿠팡와우'], 'fixed'],
+  ['식비', CONVENIENCE], // 편의점은 무엇을 샀든 식비 (카페보다 먼저 본다)
   ['간식', ['스타벅스', '투썸', '이디야', '메가커피', '메가엠지씨', '컴포즈', '빽다방', '할리스', '폴바셋', '엔제리너스',
-    '매머드', '커피빈', '공차', '커피', '카페', '베이커리', '파리바게', '뚜레쥬르', '배스킨', '던킨', '편의점', 'GS25',
-    '지에스25', 'CU', '씨유', '세븐일레븐', '이마트24', '미니스톱']],
+    '매머드', '커피빈', '공차', '커피', '카페', '베이커리', '파리바게', '뚜레쥬르', '배스킨', '던킨']],
   ['식비', ['이마트', '홈플러스', '롯데마트', '코스트코', '트레이더스', '하나로마트', '마트', '배달의민족', '배민', '요기요',
     '쿠팡이츠', '김밥', '치킨', '피자', '맥도날드', '버거킹', '롯데리아', '맘스터치', '식당', '푸드', '식품', '국밥', '해장국',
     '씨푸드', '수산', '횟집', '그릴', '고기', '갈비', '삼겹', '찌개', '분식', '반점', '짜장', '냉면', '칼국수', '돈까스', '돈가스',
@@ -1169,6 +1169,8 @@ function makeClassifier() {
   const known = { variable: new Set(categoryOptions('variable')), fixed: new Set(categoryOptions('fixed')) };
   return (merchant) => {
     const m = normMemo(merchant);
+    // 편의점은 예전에 간식으로 적은 내역이 있어도 항상 식비
+    if (isConvenience(merchant) && known.variable.has('식비')) return { type: 'variable', category: '식비', source: '키워드' };
     const viaGateway = GATEWAY.test(merchant);
     if (!viaGateway && hist.has(m)) return { ...hist.get(m), source: '이전 내역' };
     const k = !viaGateway && histKeys.find((h) => h.length >= 3 && (m.includes(h) || h.includes(m)));
@@ -1456,6 +1458,10 @@ async function readUploadFiles(fileList) {
   }));
   U.files.forEach((f, fi) => f.rows.forEach((r, i) => { r.k = `${fi}-${i}`; }));
   learnFromMatches(U.files);
+  // 편의점은 파일에 적힌 분류와 상관없이 식비
+  U.files.flatMap((f) => f.rows).forEach((r) => {
+    if (r.type === 'variable' && isConvenience(r.memo) && r.category !== '식비') { r.category = '식비'; r.guessed = '키워드'; }
+  });
   markRecurring(U.files);
   U.raw = [...fileList];
   U.busy = false; renderUpload();
@@ -1845,7 +1851,9 @@ function bind() {
     }
   });
   $('#tx-memo').addEventListener('change', (e) => {
-    if (!form.category) {
+    if (form.type === 'variable' && isConvenience(e.target.value)) {
+      form.category = '식비'; renderTxChoices();
+    } else if (!form.category) {
       const hit = [...S.tx].reverse().find((t) => t.type === form.type && t.memo === e.target.value);
       if (hit) { form.category = hit.category; if (hit.method) form.method = hit.method; renderTxChoices(); }
     }

@@ -1,5 +1,5 @@
 // 저장소 계층: Firebase(Firestore) 또는 데모(localStorage) 중 하나를 같은 인터페이스로 제공한다.
-import { firebaseConfig } from './firebase-config.js?v=20261024e';
+import { firebaseConfig } from './firebase-config.js?v=20261024f';
 
 export const MEMBERS = ['인원', '혜미'];
 
