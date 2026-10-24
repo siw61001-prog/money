@@ -292,6 +292,10 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 .budget-line { display: grid; grid-template-columns: minmax(70px, 110px) minmax(0, 1fr) 78px; gap: 10px; align-items: center; font-size: 14px; }
 .budget-line .input { padding: 7px 12px; text-align: right; }
 .budget-line .avg { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.budget-line { grid-template-columns: minmax(80px, 130px) minmax(0, 1fr) 72px 32px; }
+.icon-btn.small { width: 30px; height: 30px; font-size: 14px; }
+.budget-add { display: flex; gap: 8px; align-items: center; padding: 10px; border-radius: 12px; border: 1px dashed var(--line); }
+.budget-add select { flex: 1; min-width: 0; }
 
 /* 최근 3개월 지출 · 일별 소비 */
 .three-total { display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap; margin-bottom: 10px; }
