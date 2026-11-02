@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261026b';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261026b';
+import { createStore, MEMBERS } from './store.js?v=20261102a';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261102a';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -699,7 +699,8 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
     : leftMoney < 0 ? `벌써 예산을 ${won(-leftMoney)} 넘었어요`
       : `남은 ${prog.left}일 동안 하루 ${won(Math.floor(leftMoney / prog.left))}까지 쓸 수 있어요`;
   return `<article class="card span-6">
-    <div class="card-head"><h2>${monthNo}월 예산 <small class="muted-tag">통합</small></h2><a class="sub" href="#settings" data-goto-budget>예산 수정 →</a></div>
+    <div class="card-head"><h2>${monthNo}월 예산 <small class="muted-tag">통합</small></h2>
+      <span class="head-links"><button type="button" class="link-btn" data-share-goals>📋 공유 문구</button><a class="sub" href="#settings" data-goto-budget>예산 수정 →</a></span></div>
     <div class="budget-total ${totalState}">
       <div class="goal-top"><span>예산 ${won(totalBudget)} 중 <strong>${won(totalSpent)}</strong> 사용</span><span class="pill ${totalState}">${pct(totalSpent / totalBudget)}</span></div>
       <div class="progress budget"><span class="${totalState}" style="width:${Math.min(100, (totalSpent / totalBudget) * 100)}%"></span>
@@ -1319,6 +1320,74 @@ function refreshMergeUI() {
   const btn = $('#merge-run');
   btn.disabled = !mergeReady();
   btn.textContent = mergeButtonText();
+}
+
+/* ---------- 지출목표 공유 문구 ---------- */
+// 카톡에 붙여 넣을 목표 문구를 만든다. 목표 순서(설정)대로, 묶음별로 번호를 붙이고,
+// 이번 달 쓴 돈이 있는 항목은 '➡️ 남은 금액'을 붙인다. 쓴 돈은 두 사람 합산.
+const NUM_EMOJI = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+const manWon = (n) => {
+  const a = Math.abs(n);
+  if (a < 1e4) return `${fmt(n)}원`;
+  return `${String(Math.round(n / 1e3) / 10).replace(/\.0$/, '')}만원`;
+};
+// '카페: 간식' 줄들을 { 항목 이름: 묶음 이름 }으로
+function parseShareGroups(text) {
+  const map = new Map();
+  for (const line of String(text || '').split('\n')) {
+    const m = line.match(/^\s*([^:：]+)[:：](.*)$/);
+    if (!m) continue;
+    const group = m[1].trim();
+    m[2].split(/[,，、]/).map((x) => x.trim()).filter(Boolean).forEach((item) => { if (!map.has(item)) map.set(item, group); });
+  }
+  return map;
+}
+function shareText(ym = S.ym) {
+  const budgets = householdBudget();
+  const keys = goalOrder().filter((k) => budgets[k]);
+  if (!keys.length) return '';
+  const groupOf = parseShareGroups(S.settings.shareGroups);
+  const spentOf = (k) => S.tx.filter((t) => unitMatch(k, t) && t.date.startsWith(ym)).reduce((a, t) => a + t.amount, 0);
+  const arrow = (budget, spent) => {
+    if (!spent) return '';
+    const left = budget - spent;
+    return left >= 0 ? ` ➡️ ${manWon(left)}` : ` ➡️ ${manWon(-left)} 초과`;
+  };
+  // 묶음: 직접 정한 묶음 → 하위 분류면 상위 분류 → 자기 이름
+  const groups = new Map();
+  for (const k of keys) {
+    const [parent, sub] = k.split('|');
+    const name = sub || parent;
+    const g = groupOf.get(name) || groupOf.get(unitLabel(k)) || (sub ? parent : name);
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push({ name, budget: budgets[k], spent: spentOf(k) });
+  }
+  const total = keys.reduce((a, k) => a + budgets[k], 0);
+  const totalSpent = keys.reduce((a, k) => a + spentOf(k), 0);
+  const lines = [`✨${Number(ym.slice(5))}월 지출목표: ${manWon(total)} 이내로 쓰기`];
+  if (totalSpent) lines.push(arrow(total, totalSpent).trim());
+  [...groups.entries()].forEach(([g, items], i) => {
+    const sum = items.reduce((a, x) => a + x.budget, 0);
+    const solo = items.length === 1 && items[0].name === g; // 묶음이 자기 하나뿐이면 제목 줄만
+    lines.push('', `${NUM_EMOJI[i] || `${i + 1}.`} ${g} ${manWon(sum)}${solo ? arrow(items[0].budget, items[0].spent) : ''}`);
+    if (!solo) items.forEach((x) => lines.push(`-${x.name}: ${manWon(x.budget)}${arrow(x.budget, x.spent)}`));
+  });
+  return lines.join('\n');
+}
+function openShare() {
+  const text = shareText();
+  const prog = monthProgress(S.ym);
+  $('#share-text').value = text || `${Number(S.ym.slice(5))}월 목표가 아직 없어요. 설정 → 분류별 월 목표에서 정해 주세요.`;
+  $('#share-note').textContent = `${ymLabel(S.ym)} · ➡️ 뒤는 남은 금액(두 사람 합산${prog.current ? `, 오늘 ${Number(today().slice(8))}일까지` : ''}). 고쳐서 복사해도 돼요.`;
+  $('#share-groups').value = S.settings.shareGroups || '';
+  $('#share-send').hidden = !navigator.share;
+  $('#share-dialog').showModal();
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* 아래 방법으로 */ }
+  const ta = $('#share-text');
+  ta.focus(); ta.select();
+  try { return document.execCommand('copy'); } catch { return false; }
 }
 
 /* ---------- 설정 ---------- */
@@ -2348,6 +2417,7 @@ function bind() {
   $('#tx-amount').addEventListener('input', (e) => { formatAmountInput(e.target); updateBudgetHint(); });
   $('#tx-date').addEventListener('change', updateBudgetHint);
   $('#view-dashboard').addEventListener('click', (e) => {
+    if (e.target.closest('[data-share-goals]')) { openShare(); return; }
     const edit = e.target.closest('[data-edit-tx]');
     if (edit) { openTx(S.tx.find((t) => t.id === edit.dataset.editTx)); return; }
     if (e.target.closest('[data-three-more]')) {
@@ -2382,6 +2452,29 @@ function bind() {
   $('#tx-save-next').onclick = () => saveTx(true);
   $('#tx-delete').onclick = (e) => armDelete(e.currentTarget, async () => {
     await S.store.deleteTx(form.id); dlg.close(); toast('삭제했습니다');
+  });
+
+  // 지출목표 공유 문구
+  const sdlg = $('#share-dialog');
+  sdlg.addEventListener('click', async (e) => {
+    if (e.target === sdlg || e.target.closest('[data-close]')) { sdlg.close(); return; }
+    const text = $('#share-text').value;
+    if (e.target.closest('#share-copy')) {
+      toast(await copyText(text) ? '복사했어요. 카톡에 붙여 넣으세요' : '복사하지 못했어요. 글을 길게 눌러 직접 복사해 주세요');
+    } else if (e.target.closest('#share-send')) {
+      try { await navigator.share({ text }); } catch (err) { if (err.name !== 'AbortError') toast('보내지 못했어요. 복사해서 붙여 넣어 주세요'); }
+    } else if (e.target.closest('#share-reset')) {
+      $('#share-text').value = shareText();
+    } else if (e.target.closest('#share-groups-save')) {
+      const st = structuredClone(S.settings);
+      st.shareGroups = $('#share-groups').value.trim();
+      try {
+        await S.store.saveSettings(st);
+        S.settings.shareGroups = st.shareGroups;
+        $('#share-text').value = shareText();
+        toast('묶음을 저장했어요');
+      } catch (err) { toast(`저장하지 못했습니다: ${err.message}`); }
+    }
   });
 
   // 일괄 수정

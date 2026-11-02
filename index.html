@@ -9,9 +9,9 @@
   <link rel="icon" type="image/png" href="img/wasabi-head.png">
   <link rel="apple-touch-icon" href="img/wasabi-head.png">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="css/style.css?v=20261026b">
+  <link rel="stylesheet" href="css/style.css?v=20261102a">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <script type="module" src="js/app.js?v=20261026b"></script>
+  <script type="module" src="js/app.js?v=20261102a"></script>
 </head>
 <body>
   <header class="topbar">
@@ -176,6 +176,29 @@
         <button type="submit" class="btn primary">적용</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="share-dialog" class="sheet" aria-labelledby="share-title">
+    <div class="sheet-body">
+      <div class="sheet-head">
+        <h2 id="share-title">지출목표 공유 문구</h2>
+        <button type="button" class="icon-btn" data-close aria-label="닫기">✕</button>
+      </div>
+      <p class="hint" id="share-note"></p>
+      <textarea id="share-text" class="input share-text" rows="16" spellcheck="false" aria-label="공유 문구 (고쳐서 복사해도 돼요)"></textarea>
+      <details class="share-groups">
+        <summary>묶음 바꾸기</summary>
+        <p class="hint">한 줄에 <code>묶음: 항목, 항목</code> 처럼 적어요. 식비의 마트·외식 같은 하위 분류는 적지 않아도 식비로 묶여요. 여기 없는 목표는 자기 이름으로 따로 나와요.</p>
+        <textarea id="share-groups" class="input" rows="4" spellcheck="false" aria-label="묶음 설정"></textarea>
+        <div class="sheet-actions"><span class="spacer"></span><button type="button" class="btn" id="share-groups-save">묶음 저장</button></div>
+      </details>
+      <div class="sheet-actions">
+        <button type="button" class="btn" id="share-reset">다시 만들기</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="share-send" hidden>카톡 등으로 보내기</button>
+        <button type="button" class="btn primary" id="share-copy">복사</button>
+      </div>
+    </div>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>

@@ -1,5 +1,5 @@
 // 저장소 계층: Firebase(Firestore) 또는 데모(localStorage) 중 하나를 같은 인터페이스로 제공한다.
-import { firebaseConfig } from './firebase-config.js?v=20261026b';
+import { firebaseConfig } from './firebase-config.js?v=20261102a';
 
 export const MEMBERS = ['인원', '혜미'];
 
@@ -20,6 +20,8 @@ export const DEFAULT_SETTINGS = {
   subcategories: { '식비': ['마트', '배달음식', '외식', '편의점'] }, // 분류별 하위 분류
   budgetCounts: {}, // 목표 횟수 { '통합': { '식비|배달음식': 4 } }
   budgetOrder: {}, // 목표 표시 순서 { '통합': ['식비|마트', '간식', …] } — 대시보드도 이 순서
+  // 공유 문구에서 목표를 묶는 방법. 한 줄에 '묶음: 항목, 항목'. 식비 하위 분류는 따로 적지 않아도 식비로 묶인다.
+  shareGroups: '카페: 간식\n생활비: 생활비, 용돈, 주유, 교통비, 경조사',
 };
 
 const FB_VERSION = '10.12.2';
@@ -44,6 +46,7 @@ function mergeSettings(s) {
     subcategories: { ...base.subcategories, ...(s.subcategories || {}) },
     budgetCounts: { ...(s.budgetCounts || {}) },
     budgetOrder: { ...(s.budgetOrder || {}) },
+    shareGroups: typeof s.shareGroups === 'string' ? s.shareGroups : base.shareGroups,
   };
 }
 
