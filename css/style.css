@@ -458,8 +458,17 @@ dialog.sheet.wide { width: min(820px, calc(100vw - 24px)); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 /* ---------- 공유 문구 ---------- */
-.card-head .head-links { display: flex; gap: 12px; align-items: center; }
-.link-btn { border: 0; background: none; padding: 0; cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; }
+.share-top {
+  order: 5; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: var(--surface);
+  border-radius: 999px; padding: 6px 12px; font-size: 13.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.share-top[hidden] { display: none; }
+.share-top:hover { background: var(--surface-2); }
+@media (max-width: 720px) {
+  /* 모바일: 로고 줄 오른쪽 끝에 둔다 */
+  .brand { width: auto; flex: 1 1 auto; }
+  .share-top { order: 0; padding: 5px 11px; }
+}
 textarea.input { width: 100%; resize: vertical; line-height: 1.55; font-size: 14.5px; padding: 10px 12px; }
 .share-text { min-height: 260px; }
 .share-groups { display: grid; gap: 8px; }

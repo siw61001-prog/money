@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261102a';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261102a';
+import { createStore, MEMBERS } from './store.js?v=20261102b';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261102b';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -132,6 +132,7 @@ function renderChrome() {
   VIEWS.forEach((v) => { $(`#view-${v}`).hidden = !(S.ready && S.user && v === S.view); });
   $('#fab').hidden = !(S.ready && S.user) || S.view === 'settings' || S.view === 'assets';
   $('#mode-badge').hidden = S.store?.mode !== 'demo';
+  $('#share-top').hidden = !(S.ready && S.user);
   // 로그인 전에는 사람·월 선택과 탭을 숨긴다
   const signedIn = !!S.user;
   $('#who-seg').hidden = !signedIn;
@@ -699,8 +700,7 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
     : leftMoney < 0 ? `벌써 예산을 ${won(-leftMoney)} 넘었어요`
       : `남은 ${prog.left}일 동안 하루 ${won(Math.floor(leftMoney / prog.left))}까지 쓸 수 있어요`;
   return `<article class="card span-6">
-    <div class="card-head"><h2>${monthNo}월 예산 <small class="muted-tag">통합</small></h2>
-      <span class="head-links"><button type="button" class="link-btn" data-share-goals>📋 공유 문구</button><a class="sub" href="#settings" data-goto-budget>예산 수정 →</a></span></div>
+    <div class="card-head"><h2>${monthNo}월 예산 <small class="muted-tag">통합</small></h2><a class="sub" href="#settings" data-goto-budget>예산 수정 →</a></div>
     <div class="budget-total ${totalState}">
       <div class="goal-top"><span>예산 ${won(totalBudget)} 중 <strong>${won(totalSpent)}</strong> 사용</span><span class="pill ${totalState}">${pct(totalSpent / totalBudget)}</span></div>
       <div class="progress budget"><span class="${totalState}" style="width:${Math.min(100, (totalSpent / totalBudget) * 100)}%"></span>
@@ -2417,7 +2417,6 @@ function bind() {
   $('#tx-amount').addEventListener('input', (e) => { formatAmountInput(e.target); updateBudgetHint(); });
   $('#tx-date').addEventListener('change', updateBudgetHint);
   $('#view-dashboard').addEventListener('click', (e) => {
-    if (e.target.closest('[data-share-goals]')) { openShare(); return; }
     const edit = e.target.closest('[data-edit-tx]');
     if (edit) { openTx(S.tx.find((t) => t.id === edit.dataset.editTx)); return; }
     if (e.target.closest('[data-three-more]')) {
@@ -2454,7 +2453,8 @@ function bind() {
     await S.store.deleteTx(form.id); dlg.close(); toast('삭제했습니다');
   });
 
-  // 지출목표 공유 문구
+  // 지출목표 공유 문구 (헤더 버튼, 보고 있는 달 기준)
+  $('#share-top').addEventListener('click', openShare);
   const sdlg = $('#share-dialog');
   sdlg.addEventListener('click', async (e) => {
     if (e.target === sdlg || e.target.closest('[data-close]')) { sdlg.close(); return; }
