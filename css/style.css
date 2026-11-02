@@ -456,3 +456,12 @@ dialog.sheet.wide { width: min(820px, calc(100vw - 24px)); }
   .chart-box { height: 220px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---------- 공유 문구 ---------- */
+.card-head .head-links { display: flex; gap: 12px; align-items: center; }
+.link-btn { border: 0; background: none; padding: 0; cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; }
+textarea.input { width: 100%; resize: vertical; line-height: 1.55; font-size: 14.5px; padding: 10px 12px; }
+.share-text { min-height: 260px; }
+.share-groups { display: grid; gap: 8px; }
+.share-groups summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+.share-groups[open] { padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
