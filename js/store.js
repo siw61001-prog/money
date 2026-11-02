@@ -1,7 +1,11 @@
 // 저장소 계층: Firebase(Firestore) 또는 데모(localStorage) 중 하나를 같은 인터페이스로 제공한다.
-import { firebaseConfig } from './firebase-config.js?v=20261102b';
+import { firebaseConfig } from './firebase-config.js?v=20261102c';
+import { buildSample, SAMPLE_MEMBERS } from './sample.js?v=20261102c';
 
-export const MEMBERS = ['인원', '혜미'];
+// 주소에 ?demo=1 을 붙이면 실제 데이터 대신 이 브라우저의 데모 데이터(가상의 두 사람 샘플)로 연다
+const params = new URLSearchParams(location.search);
+export const IS_DEMO = params.has('demo');
+export const MEMBERS = IS_DEMO ? SAMPLE_MEMBERS : ['인원', '혜미'];
 
 export const DEFAULT_SETTINGS = {
   categories: {
@@ -14,9 +18,9 @@ export const DEFAULT_SETTINGS = {
     variable: ['신용카드', '체크카드', '현금/송금', '기타'],
     fixed: ['자동이체', '신용카드', '체크카드', '현금/송금', '기타'],
   },
-  goals: { '인원': 100000, '혜미': 100000 },
+  goals: Object.fromEntries(MEMBERS.map((m) => [m, 100000])),
   ignoredRecurring: [], // '매달 반복 아님'으로 표시한 가게 (사람|가게 키)
-  budgets: { '인원': {}, '혜미': {} }, // 사람별 소비지출 분류 월 예산 { 분류: 금액 }
+  budgets: Object.fromEntries(MEMBERS.map((m) => [m, {}])), // 사람별 소비지출 분류 월 예산 { 분류: 금액 }
   subcategories: { '식비': ['마트', '배달음식', '외식', '편의점'] }, // 분류별 하위 분류
   budgetCounts: {}, // 목표 횟수 { '통합': { '식비|배달음식': 4 } }
   budgetOrder: {}, // 목표 표시 순서 { '통합': ['식비|마트', '간식', …] } — 대시보드도 이 순서
@@ -28,9 +32,7 @@ const FB_VERSION = '10.12.2';
 const BATCH_LIMIT = 450;
 
 export async function createStore({ onData, onAuth, onError }) {
-  // 주소에 ?demo=1 을 붙이면 실제 데이터 대신 이 브라우저의 데모 데이터로 연다 (기능 시험용)
-  const forceDemo = new URLSearchParams(location.search).has('demo');
-  return firebaseConfig.apiKey && !forceDemo
+  return firebaseConfig.apiKey && !IS_DEMO
     ? createFirebaseStore({ onData, onAuth, onError }) : createDemoStore({ onData, onAuth });
 }
 
@@ -150,14 +152,20 @@ async function createFirebaseStore({ onData, onAuth, onError }) {
 
 /* ---------- 데모 (localStorage) ---------- */
 function createDemoStore({ onData, onAuth }) {
-  const KEY = 'gagyebu-demo-v1';
+  const KEY = 'gagyebu-demo-v2';
   let data;
   try {
     data = JSON.parse(localStorage.getItem(KEY)) || null;
   } catch {
     data = null;
   }
-  data = data || { tx: [], assets: [], settings: null };
+  // 처음 열 때, 달이 바뀌었을 때, ?demo=reset 일 때 샘플 데이터로 채운다 (고친 내용은 그 달 동안 이 브라우저에만 남음)
+  const now = new Date();
+  const thisYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  if (!data || data.sampleFor !== thisYm || params.get('demo') === 'reset') {
+    data = { ...buildSample(), sampleFor: thisYm };
+    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch { /* 저장 공간 없음 */ }
+  }
   data.settings = mergeSettings(data.settings);
   data.assetHistory = data.assetHistory || {};
 

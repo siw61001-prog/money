@@ -1,5 +1,5 @@
-import { createStore, MEMBERS } from './store.js?v=20261102b';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261102b';
+import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261102c';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261102c';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -28,7 +28,13 @@ const S = {
   ready: false,
   who: local.get('who', 'all'),
   view: VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'dashboard',
-  ym: today().slice(0, 7),
+  // 샘플(데모)은 월초엔 이번 달 내역이 거의 없으니 지난달부터 보여준다
+  ym: (() => {
+    const t = today();
+    if (!IS_DEMO || Number(t.slice(8)) > 7) return t.slice(0, 7);
+    const d = new Date(Number(t.slice(0, 4)), Number(t.slice(5, 7)) - 2, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  })(),
   filter: { type: 'all', cat: '', q: '' },
   imports: [],
   openCats: new Set(), // 대시보드에서 펼쳐 둔 분류
