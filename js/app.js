@@ -1,5 +1,5 @@
-import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261102c';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261102c';
+import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261104a';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261104a';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
