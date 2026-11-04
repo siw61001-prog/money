@@ -1,17 +1,25 @@
 // 기존 구글 스프레드시트/엑셀 가계부(.xlsx)를 앱 데이터로 변환한다.
 // 시트 구성: 수입(날짜·금액·분류·메모), 소비지출/고정비용(날짜·금액·분류·결제 수단·메모), 자산.
-const SHEETJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+// 0.18.5(npm·cdnjs 마지막 판)에는 조작된 엑셀 파일로 악용될 수 있는 알려진 취약점이 있어
+// (CVE-2023-30533 프로토타입 오염, CVE-2024-22363 ReDoS) SheetJS 공식 CDN의 고친 판을 쓴다.
+// 공식 CDN이 막혀 있을 때만 예전 판으로 읽는다.
+const SHEETJS_URLS = [
+  'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+];
 
 let sheetjs;
+const loadScript = (src) => new Promise((resolve, reject) => {
+  const s = document.createElement('script');
+  s.src = src;
+  s.onload = () => (window.XLSX ? resolve(window.XLSX) : reject(new Error('no XLSX')));
+  s.onerror = () => { s.remove(); reject(new Error('load failed')); };
+  document.head.appendChild(s);
+});
 function loadSheetJS() {
   if (window.XLSX) return Promise.resolve(window.XLSX);
-  sheetjs = sheetjs || new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = SHEETJS_URL;
-    s.onload = () => resolve(window.XLSX);
-    s.onerror = () => reject(new Error('엑셀 처리 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.'));
-    document.head.appendChild(s);
-  });
+  sheetjs = sheetjs || SHEETJS_URLS.reduce((p, url) => p.catch(() => loadScript(url)), Promise.reject())
+    .catch(() => { sheetjs = null; throw new Error('엑셀 처리 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하세요.'); });
   return sheetjs;
 }
 

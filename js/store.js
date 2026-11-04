@@ -1,6 +1,6 @@
 // 저장소 계층: Firebase(Firestore) 또는 데모(localStorage) 중 하나를 같은 인터페이스로 제공한다.
-import { firebaseConfig } from './firebase-config.js?v=20261102c';
-import { buildSample, SAMPLE_MEMBERS } from './sample.js?v=20261102c';
+import { firebaseConfig } from './firebase-config.js?v=20261104a';
+import { buildSample, SAMPLE_MEMBERS } from './sample.js?v=20261104a';
 
 // 주소에 ?demo=1 을 붙이면 실제 데이터 대신 이 브라우저의 데모 데이터(가상의 두 사람 샘플)로 연다
 const params = new URLSearchParams(location.search);
@@ -126,7 +126,15 @@ async function createFirebaseStore({ onData, onAuth, onError }) {
         }
       }
     },
-    signOut: () => fa.signOut(auth),
+    // 로그아웃하면 이 기기에 남은 오프라인 사본(IndexedDB)도 지운다 — 같이 쓰는 PC에 가계부가 남지 않게
+    async signOut() {
+      await fa.signOut(auth);
+      try {
+        await fs.terminate(db);
+        await fs.clearIndexedDbPersistence(db);
+      } catch { /* 다른 탭이 열려 있으면 지우지 못한다: 로그인 정보는 이미 지워졌다 */ }
+      location.reload();
+    },
     addTx: (t) => fs.addDoc(fs.collection(db, 'tx'), { ...t, ...stamp() }),
     updateTx: (id, t) => fs.updateDoc(fs.doc(db, 'tx', id), { ...t, ...stamp() }),
     deleteTx: (id) => fs.deleteDoc(fs.doc(db, 'tx', id)),

@@ -2,14 +2,16 @@ rules_version = '2';
 
 // 가계부 데이터는 아래 두 Google 계정만 읽고 쓸 수 있다.
 // 바꾼 뒤에는 Firebase 콘솔 > Firestore > 규칙 탭에 붙여넣고 '게시'해야 적용된다.
+// 이 저장소는 공개라서 실제 이메일은 여기 적지 않는다. 실제 주소는 Firebase 콘솔에 게시된 규칙에만 둔다.
+// (붙여넣을 때 아래 두 줄을 실제 Gmail 주소로 바꿔서 게시)
 service cloud.firestore {
   match /databases/{database}/documents {
     function isMember() {
       return request.auth != null
         && request.auth.token.email_verified == true
         && request.auth.token.email in [
-          'siw61001@gmail.com',
-          'tiyddsx@gmail.com'
+          'MEMBER1_EMAIL@gmail.com',
+          'MEMBER2_EMAIL@gmail.com'
         ];
     }
 
