@@ -1,5 +1,5 @@
-import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261109a';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261109a';
+import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261109b';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261109b';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -404,7 +404,7 @@ function drawStatusChart(hhCats) {
   const byBudget = all.some((r) => r.budget);
   const rows = byBudget ? all.filter((r) => r.budget) : all;
   const prog = monthProgress(S.ym);
-  const color = (st) => cssVar(st === 'over' ? '--expense' : st === 'warn' ? '--warn' : st === 'ok' ? '--saving' : '--muted');
+  const color = (st) => cssVar(st === 'over' ? '--expense-fill' : st === 'warn' ? '--warn-fill' : st === 'ok' ? '--saving-fill' : '--fixed-fill');
   const ratio = (r) => (r.spent / r.budget) * 100;
   // 가로축은 125%까지만 (넘은 분류는 막대를 125%에서 자르고 숫자로 실제 값을 보여준다)
   const axisMax = byBudget ? 125 : undefined;
@@ -421,7 +421,7 @@ function drawStatusChart(hhCats) {
   }];
   if (byBudget) {
     datasets.push({
-      label: '예산', data: rows.map(() => 100), backgroundColor: 'rgba(138, 130, 116, .16)',
+      label: '예산', data: rows.map(() => 100), backgroundColor: cssVar('--track'),
       borderRadius: 5, barPercentage: 0.95, categoryPercentage: 0.9, grouped: false, order: 2,
     });
   }
@@ -519,8 +519,8 @@ function drawThreeMonthChart(list) {
     data: {
       labels: ms.map((m) => `${Number(m.slice(5))}월`),
       datasets: [
-        { label: '고정비용', data: per.map((s) => s.fixed), backgroundColor: cssVar('--warn'), borderRadius: 4, maxBarThickness: 46 },
-        { label: '소비지출', data: per.map((s) => s.variable), backgroundColor: cssVar('--expense'), borderRadius: 4, maxBarThickness: 46 },
+        { label: '고정비용', data: per.map((s) => s.fixed), backgroundColor: cssVar('--fixed-fill'), borderRadius: 4, maxBarThickness: 46 },
+        { label: '소비지출', data: per.map((s) => s.variable), backgroundColor: cssVar('--expense-fill'), borderRadius: 4, maxBarThickness: 46 },
       ],
     },
     options: {
@@ -748,10 +748,10 @@ function drawYearChart(months, monthly) {
     data: {
       labels: months.map((m) => `${Number(m.slice(5))}월`),
       datasets: [
-        { type: 'bar', label: '수입', data: monthly.map((s) => s.income), backgroundColor: cssVar('--income'), borderRadius: 4, maxBarThickness: 18, order: 2 },
-        { type: 'bar', label: '지출', data: monthly.map((s) => s.spend), backgroundColor: cssVar('--expense'), borderRadius: 4, maxBarThickness: 18, order: 2 },
-        { type: 'line', label: '실제 저축', data: monthly.map((s) => (s.income || s.spend ? s.saved : null)), borderColor: cssVar('--saving'),
-          backgroundColor: cssVar('--saving'), tension: .3, pointRadius: 3, spanGaps: true, order: 1 },
+        { type: 'bar', label: '수입', data: monthly.map((s) => s.income), backgroundColor: cssVar('--income-fill'), borderRadius: 4, maxBarThickness: 18, order: 2 },
+        { type: 'bar', label: '지출', data: monthly.map((s) => s.spend), backgroundColor: cssVar('--expense-fill'), borderRadius: 4, maxBarThickness: 18, order: 2 },
+        { type: 'line', label: '실제 저축', data: monthly.map((s) => (s.income || s.spend ? s.saved : null)), borderColor: cssVar('--saving-fill'),
+          backgroundColor: cssVar('--saving-fill'), tension: .3, pointRadius: 3, spanGaps: true, order: 1 },
       ],
     },
     options: {
@@ -779,7 +779,7 @@ function drawDailyChart(monthTx) {
   for (const t of monthTx) if (t.type !== 'income' && !isSaving(t)) sums[Number(t.date.slice(8)) - 1] += t.amount;
   charts.daily = new Chart(el, {
     type: 'bar',
-    data: { labels: sums.map((_, i) => i + 1), datasets: [{ label: '지출', data: sums, backgroundColor: cssVar('--expense'), borderRadius: 3 }] },
+    data: { labels: sums.map((_, i) => i + 1), datasets: [{ label: '지출', data: sums, backgroundColor: cssVar('--expense-fill'), borderRadius: 3 }] },
     options: {
       maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { title: (c) => `${m}월 ${c[0].label}일`, label: (c) => won(c.raw) } } },
@@ -826,12 +826,18 @@ function renderList() {
       <div class="card-head"><h2>고정비용으로 처리할까요?</h2>
         <button type="button" class="btn small primary" data-recur-all>모두 고정비용으로</button></div>
       <p class="hint">소비지출로 들어가 있지만 같은 가게에서 비슷한 금액으로 두 달 이상 나간 결제입니다. 고정비용으로 옮기면 대시보드의 고정비용에 합산돼요.</p>
-      <ul class="mini-list">${recur.map((g) => `
-        <li><span class="pill fixed">${esc(fixedCategoryFor(g, g.items[0].memo))}</span>
-          <span class="grow">${esc(g.items[0].memo)}${S.who === 'all' ? ` <span class="meta">· ${esc(g.items[0].owner)}</span>` : ''}
-            <span class="meta">· 약 ${fmt(g.amount)}원 · ${g.months}개월 · 소비지출 ${g.variable.length}건</span></span>
-          <button type="button" class="btn small" data-recur-apply="${esc(g.key)}">고정비용으로</button>
-          <button type="button" class="btn small ghost" data-recur-ignore="${esc(g.key)}">아님</button></li>`).join('')}</ul>
+      ${(() => {
+        // 한 줄: 가게 이름 / 아래 줄: 옮길 분류·누구·금액, 오른쪽에 버튼 두 개. 3개 넘으면 접어 둔다
+        const li = (g) => `<li class="recur-item">
+          <span class="recur-main"><span class="recur-name">${esc(g.items[0].memo)}</span>
+            <span class="meta"><span class="pill fixed">${esc(fixedCategoryFor(g, g.items[0].memo))}</span>
+              ${S.who === 'all' ? `<span>${esc(g.items[0].owner)}</span>` : ''}<span>약 ${fmt(g.amount)}원 · ${g.months}개월째</span></span></span>
+          <span class="recur-actions"><button type="button" class="btn small" data-recur-apply="${esc(g.key)}">고정비용으로</button>
+            <button type="button" class="btn small ghost" data-recur-ignore="${esc(g.key)}">아님</button></span></li>`;
+        const head = recur.slice(0, 3); const rest = recur.slice(3);
+        return `<ul class="recur-list">${head.map(li).join('')}</ul>${rest.length ? `<details class="recur-more"><summary>${rest.length}개 더 보기</summary>
+          <ul class="recur-list">${rest.map(li).join('')}</ul></details>` : ''}`;
+      })()}
     </div>` : ''}
     <div class="card">
       <div class="toolbar">
@@ -1223,9 +1229,9 @@ function drawNetWorthChart() {
   const dashed = (pts) => (ctx) => (pts[ctx.p0DataIndex]?.kind === 'estimate' || pts[ctx.p1DataIndex]?.kind === 'estimate' ? [6, 5] : undefined);
   const datasets = [{
     label: S.who === 'all' ? '통합 순자산' : `${S.who} 순자산`,
-    data: main.map((p) => p.value), borderColor: cssVar('--accent'), backgroundColor: 'rgba(107,158,79,.12)',
+    data: main.map((p) => p.value), borderColor: cssVar('--accent-fill'), backgroundColor: cssVar('--accent-wash'),
     fill: true, tension: .3, borderWidth: 2.5,
-    pointRadius: main.map((p) => (p.kind === 'estimate' ? 2 : 4)), pointBackgroundColor: cssVar('--accent'),
+    pointRadius: main.map((p) => (p.kind === 'estimate' ? 2 : 4)), pointBackgroundColor: cssVar('--accent-fill'),
     segment: { borderDash: dashed(main) },
   }];
   if (S.who === 'all') {
