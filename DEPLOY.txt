@@ -1,0 +1,22 @@
+우리 가계부 다시 띄우기 (GitHub 없이)
+=====================================
+가계부 데이터는 Firebase(ih-money 프로젝트)에 그대로 있습니다. 화면(웹사이트)만 다른 곳에 올리면 됩니다.
+
+방법 A. Firebase Hosting (추천) — 주소: https://ih-money.web.app
+  데이터가 있는 같은 Firebase 프로젝트라 로그인 설정을 따로 안 해도 됩니다.
+  PC에 Node.js(https://nodejs.org, LTS)가 있어야 합니다.
+  1) 이 압축을 푼 폴더에서 터미널(맥: 터미널 / 윈도우: PowerShell)을 엽니다.
+  2) npm install -g firebase-tools
+  3) firebase login        (가계부 Firebase를 만든 Google 계정으로 로그인)
+  4) firebase deploy --only hosting
+  5) 끝나면 https://ih-money.web.app 로 접속해서 로그인
+
+방법 B. Netlify Drop (프로그램 설치 없이 끌어다 놓기)
+  1) https://app.netlify.com/drop 에 이 폴더(압축 푼 것)를 통째로 끌어다 놓기
+  2) 생긴 주소(예: xxxx.netlify.app)를 복사
+  3) Firebase 콘솔 > Authentication > 설정 > 승인된 도메인 > 도메인 추가 에 그 주소를 넣기
+     (안 넣으면 Google 로그인이 막힙니다)
+
+공통
+  - Google Cloud 콘솔에서 API 키 사용처를 제한해 두었다면, 새 주소도 허용 목록에 추가하세요.
+  - 샘플(데모) 화면은 주소 끝에 ?demo=1
