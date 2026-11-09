@@ -1,5 +1,5 @@
-import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261104a';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261104a';
+import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261109a';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261109a';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -207,17 +207,13 @@ function renderDashboard() {
   const perPerson = S.who === 'all' ? `
     <article class="card span-12">
       <div class="card-head"><h2>사람별 ${monthNo}월 비교</h2><span class="sub">통합 = ${MEMBERS.join(' + ')}</span></div>
-      <div class="table-wrap"><table>
+      <div class="table-wrap"><table class="stack-table">
         <thead><tr><th>이름</th><th>수입</th><th>고정비용</th><th>소비지출</th><th>실제 저축</th><th>저축률</th></tr></thead>
         <tbody>
-          ${MEMBERS.map((m) => {
-            const s = stats(inMonth(scopedTx(m), S.ym));
-            return `<tr><td><span class="dot" style="background:${memberColor(m)}"></span> ${esc(m)}</td>
-              <td class="c-income">${fmt(s.income)}</td><td>${fmt(s.fixed)}</td><td>${fmt(s.variable)}</td>
-              <td class="${s.saved >= 0 ? 'c-saving' : 'c-expense'}">${fmt(s.saved)}</td><td>${pct(s.rate)}</td></tr>`;
-          }).join('')}
-          <tr class="total"><td>합계</td><td class="c-income">${fmt(cur.income)}</td><td>${fmt(cur.fixed)}</td><td>${fmt(cur.variable)}</td>
-            <td class="${cur.saved >= 0 ? 'c-saving' : 'c-expense'}">${fmt(cur.saved)}</td><td>${pct(cur.rate)}</td></tr>
+          ${[...MEMBERS.map((m) => [m, stats(inMonth(scopedTx(m), S.ym))]), ['합계', cur]].map(([m, s]) => `
+            <tr${m === '합계' ? ' class="total"' : ''}><td class="stack-title">${m === '합계' ? '합계' : `<span class="dot" style="background:${memberColor(m)}"></span> ${esc(m)}`}</td>
+              <td data-label="수입" class="c-income">${fmt(s.income)}</td><td data-label="고정비용">${fmt(s.fixed)}</td><td data-label="소비지출">${fmt(s.variable)}</td>
+              <td data-label="실제 저축" class="${s.saved >= 0 ? 'c-saving' : 'c-expense'}">${fmt(s.saved)}</td><td data-label="저축률">${pct(s.rate)}</td></tr>`).join('')}
         </tbody>
       </table></div>
     </article>` : '';
@@ -228,7 +224,7 @@ function renderDashboard() {
         <div class="k-foot">${deltaText(cur.income, prev.income, false) || '&nbsp;'}</div></div>
       <div class="kpi"><div class="k-label">지출 (고정+소비)</div><div class="k-value c-expense">${won(cur.spend)}</div>
         <div class="k-foot">고정 ${shortWon(cur.fixed)} · 소비 ${shortWon(cur.variable)}</div></div>
-      <div class="kpi hero"><div class="k-label">실제 저축 · 저축률 ${pct(cur.rate)}</div><div class="k-value">${won(cur.saved)}</div>
+      <div class="kpi hero"><div class="k-label">실제 저축 · 저축률 ${pct(cur.rate)}</div><div class="k-value${cur.saved < 0 ? ' neg' : ''}">${won(cur.saved)}</div>
         <div class="k-foot">수입 − 고정비용 − 소비지출</div></div>
     </div>
 
@@ -415,7 +411,10 @@ function drawStatusChart(hhCats) {
   const value = (r) => (byBudget ? Math.min(ratio(r), axisMax) : r.spent);
   const counts = householdCounts();
   const cnt = (r) => (counts[r.c] ? ` · ${unitCount(r.c, S.ym)}/${counts[r.c]}회` : '');
-  const labels = rows.map((r) => (byBudget ? `${Math.round(ratio(r))}% · ${shortWon(r.spent)} / ${shortWon(r.budget)}${cnt(r)}` : `${shortWon(r.spent)}${cnt(r)}`));
+  const narrow = el.clientWidth < 480;
+  const labels = rows.map((r) => (byBudget
+    ? (narrow ? `${Math.round(ratio(r))}% · ${shortWon(r.spent)}` : `${Math.round(ratio(r))}% · ${shortWon(r.spent)} / ${shortWon(r.budget)}${cnt(r)}`)
+    : `${shortWon(r.spent)}${cnt(r)}`));
   const datasets = [{
     label: '사용', data: rows.map(value), backgroundColor: rows.map((r) => color(r.state)),
     borderRadius: 5, barPercentage: 0.6, categoryPercentage: 0.9, grouped: false, order: 1,
@@ -450,7 +449,7 @@ function drawStatusChart(hhCats) {
         x: byBudget
           ? { min: 0, max: axisMax, ticks: { stepSize: 25, callback: (v) => `${v}%` }, grid: { color: (c) => (c.tick.value === 100 ? cssVar('--muted') : cssVar('--line')) } }
           : { ticks: { callback: (v) => shortWon(v) }, grid: { color: cssVar('--line') } },
-        y: { grid: { display: false }, ticks: { font: { size: 13, weight: '600' }, color: cssVar('--ink') } },
+        y: { grid: { display: false }, ticks: { font: { size: narrow ? 12 : 13, weight: '600' }, color: cssVar('--ink') } },
       },
     },
   });
@@ -735,6 +734,9 @@ function chartDefaults() {
   Chart.defaults.font.family = cssVar('--font') || 'sans-serif';
   Chart.defaults.color = cssVar('--muted');
   Chart.defaults.borderColor = cssVar('--line');
+  Chart.defaults.font.size = window.innerWidth < 600 ? 11 : 12;
+  Chart.defaults.scale.ticks.maxRotation = 0;
+  Chart.defaults.scale.ticks.autoSkipPadding = 8;
   return true;
 }
 
@@ -867,10 +869,10 @@ function renderList() {
           <div class="tx-line${S.sel.has(t.id) ? ' selected' : ''}">
           <label class="tx-check"><input type="checkbox" data-sel="${esc(t.id)}" ${S.sel.has(t.id) ? 'checked' : ''} aria-label="선택"></label>
           <button type="button" class="tx-row" data-id="${esc(t.id)}">
-            <span class="pill ${t.type === 'income' ? 'income' : isSaving(t) ? 'saving' : t.type === 'fixed' ? 'fixed' : ''}">${esc(t.category)}${subOf(t) ? ` · ${esc(subOf(t))}` : ''}</span>
             <span class="left-col"><span class="memo">${esc(t.memo || t.category)}</span>
-              <span class="meta">${S.who === 'all' ? `<span><span class="dot" style="background:${memberColor(t.owner)}"></span> ${esc(t.owner)}</span>` : ''}
-                <span>${TYPE_LABEL[t.type]}</span>${t.method ? `<span>${esc(t.method)}</span>` : ''}</span></span>
+              <span class="meta"><span class="pill ${t.type === 'income' ? 'income' : isSaving(t) ? 'saving' : t.type === 'fixed' ? 'fixed' : ''}">${esc(t.category)}${subOf(t) ? ` · ${esc(subOf(t))}` : ''}</span>
+                ${S.who === 'all' ? `<span><span class="dot" style="background:${memberColor(t.owner)}"></span> ${esc(t.owner)}</span>` : ''}
+                ${t.type !== 'variable' ? `<span>${TYPE_LABEL[t.type]}</span>` : ''}${t.method ? `<span>${esc(t.method)}</span>` : ''}</span></span>
             <span class="amt ${t.type === 'income' ? 'c-income' : ''}">${t.type === 'income' ? '+' : '−'}${fmt(t.amount)}</span>
           </button></div>`).join('')}
       </div>`;
@@ -1017,7 +1019,7 @@ function renderAssets() {
 
   $('#view-assets').innerHTML = `
     <div class="kpis">
-      <div class="kpi hero"><div class="k-label">순자산</div><div class="k-value">${won(totalA - totalD)}</div>
+      <div class="kpi hero"><div class="k-label">순자산</div><div class="k-value${totalA - totalD < 0 ? ' neg' : ''}">${won(totalA - totalD)}</div>
         <div class="k-foot">${change == null ? esc(S.who === 'all' ? '통합' : S.who)
           : `${Number(before.ym.slice(5))}월보다 <b class="${change >= 0 ? 'c-saving' : 'c-expense'}">${change >= 0 ? '+' : '−'}${shortWon(Math.abs(change))}</b>${before.kind === 'estimate' ? ' (추정 대비)' : ''}`}</div></div>
       <div class="kpi"><div class="k-label">총 자산</div><div class="k-value c-saving">${won(totalA)}</div><div class="k-foot">${list.filter((a) => a.kind === '자산').length}개 항목</div></div>
@@ -1040,14 +1042,14 @@ function renderAssets() {
       ${assetTrendCard()}
       <article class="card span-12">
         <div class="card-head"><h2>자산·부채 목록</h2><button type="button" class="btn small primary" id="add-asset">＋ 항목 추가</button></div>
-        ${list.length ? `<div class="table-wrap"><table>
+        ${list.length ? `<div class="table-wrap"><table class="stack-table asset-table">
           <thead><tr>${S.who === 'all' ? '<th class="left">누구</th>' : ''}<th class="left">구분</th><th class="left">분류</th><th class="left">상세 항목</th><th class="left">금융기관/보관처</th><th>평가 금액</th><th class="left">비고</th></tr></thead>
           <tbody>${[...list].sort((a, b) => a.owner.localeCompare(b.owner) || a.kind.localeCompare(b.kind) || b.amount - a.amount).map((a) => `
-            <tr data-asset="${esc(a.id)}" style="cursor:pointer">
-              ${S.who === 'all' ? `<td class="left"><span class="dot" style="background:${memberColor(a.owner)}"></span> ${esc(a.owner)}</td>` : ''}
-              <td class="left"><span class="pill ${a.kind === '부채' ? '' : 'saving'}">${esc(a.kind)}</span></td>
-              <td class="left">${esc(a.group)}</td><td class="left">${esc(a.name)}</td><td class="left">${esc(a.place)}</td>
-              <td class="${a.kind === '부채' ? 'c-expense' : ''}">${fmt(a.amount)}</td><td class="left">${esc(a.note)}</td>
+            <tr data-asset="${esc(a.id)}" style="cursor:pointer" data-meta="${esc([S.who === 'all' ? a.owner : '', a.kind, a.group, a.place].filter(Boolean).join(' · '))}">
+              ${S.who === 'all' ? `<td class="left a-owner"><span class="dot" style="background:${memberColor(a.owner)}"></span> ${esc(a.owner)}</td>` : ''}
+              <td class="left a-kind"><span class="pill ${a.kind === '부채' ? '' : 'saving'}">${esc(a.kind)}</span></td>
+              <td class="left a-group">${esc(a.group)}</td><td class="left a-name">${esc(a.name)}</td><td class="left a-place">${esc(a.place)}</td>
+              <td class="a-amt ${a.kind === '부채' ? 'c-expense' : ''}">${fmt(a.amount)}</td><td class="left a-note">${esc(a.note)}</td>
             </tr>`).join('')}</tbody>
         </table></div>` : '<p class="empty">아직 자산 항목이 없습니다. ‘항목 추가’를 누르거나 설정에서 엑셀을 가져오세요.</p>'}
       </article>
@@ -1193,15 +1195,15 @@ function assetTrendCard() {
         ${pts.length > 1 ? ` · 그동안 <b class="${lastPt.value - first >= 0 ? 'c-saving' : 'c-expense'}">${lastPt.value - first >= 0 ? '+' : '−'}${shortWon(Math.abs(lastPt.value - first))}</b>` : ''}</span></div>
     <div class="chart-box"><canvas id="chart-networth" aria-label="월별 순자산 추이 차트"></canvas></div>
     ${hasEstimate ? '<p class="hint">점선은 자산 기록이 없던 달을 가계부의 실제 저축(수입 − 지출)으로 거꾸로 계산한 추정치예요. 수입을 빠짐없이 적을수록 정확해져요.</p>' : ''}
-    <div class="table-wrap" style="margin-top:8px"><table>
+    <div class="table-wrap" style="margin-top:8px"><table class="stack-table">
       <thead><tr><th class="left">월</th><th>순자산</th><th>전월 대비</th><th>그 달 실제 저축</th><th class="left">구분</th></tr></thead>
       <tbody>${[...pts].reverse().map((p, i, arr) => {
         const before = arr[i + 1];
         const diff = before ? p.value - before.value : null;
         const sv = stats(inMonth(scopedTx(), p.ym)).saved;
-        return `<tr><td class="left">${ymLabel(p.ym)}</td><td>${fmt(p.value)}</td>
-          <td class="${diff == null ? '' : diff >= 0 ? 'c-saving' : 'c-expense'}">${diff == null ? '–' : `${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff))}`}</td>
-          <td>${fmt(sv)}</td><td class="left"><span class="pill ${p.kind === 'estimate' ? '' : 'saving'}">${KIND_LABEL[p.kind]}</span></td></tr>`;
+        return `<tr><td class="left stack-title">${ymLabel(p.ym)}</td><td data-label="순자산">${fmt(p.value)}</td>
+          <td data-label="전월 대비" class="${diff == null ? '' : diff >= 0 ? 'c-saving' : 'c-expense'}">${diff == null ? '–' : `${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff))}`}</td>
+          <td data-label="실제 저축">${fmt(sv)}</td><td data-label="구분" class="left"><span class="pill ${p.kind === 'estimate' ? '' : 'saving'}">${KIND_LABEL[p.kind]}</span></td></tr>`;
       }).join('')}</tbody></table></div>
     <div class="toolbar" style="margin-top:12px">
       <button type="button" class="btn small" id="hist-open">지난 달 기록 입력</button>
@@ -1455,13 +1457,13 @@ function renderSettings() {
             const avgN = avgCount(k, thisYm);
             return `<div class="budget-line"><span class="name">
                 <span class="order-btns">
-                  <button type="button" class="icon-btn tiny" data-budget-move="${esc(k)}" data-dir="-1" ${idx === 0 ? 'disabled' : ''} aria-label="${esc(unitLabel(k))} 위로">▲</button>
-                  <button type="button" class="icon-btn tiny" data-budget-move="${esc(k)}" data-dir="1" ${idx === S.budgetDraft.length - 1 ? 'disabled' : ''} aria-label="${esc(unitLabel(k))} 아래로">▼</button>
+                  <button type="button" class="icon-btn tiny" data-budget-move="${esc(k)}" data-dir="-1" ${idx === 0 ? 'disabled' : ''} aria-label="${esc(unitLabel(k))} 위로"><svg class="ico" aria-hidden="true"><use href="#i-up"/></svg></button>
+                  <button type="button" class="icon-btn tiny" data-budget-move="${esc(k)}" data-dir="1" ${idx === S.budgetDraft.length - 1 ? 'disabled' : ''} aria-label="${esc(unitLabel(k))} 아래로"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg></button>
                 </span>${esc(unitLabel(k))}</span>
               <input class="input" data-budget-cat="${esc(k)}" inputmode="numeric" placeholder="금액" value="${esc(v)}" aria-label="${esc(unitLabel(k))} 목표 금액">
               <span class="count-input"><input class="input" data-budget-count="${esc(k)}" inputmode="numeric" placeholder="–" value="${esc(n || '')}" aria-label="${esc(unitLabel(k))} 목표 횟수"><span>회</span></span>
               <span class="avg" data-avg="${Math.round(avg / 10000) * 10000}" data-avg-count="${Math.round(avgN)}">${avg ? `${shortWon(avg)} · ${Math.round(avgN * 10) / 10}회` : ''}</span>
-              <button type="button" class="icon-btn small" data-budget-del="${esc(k)}" aria-label="${esc(unitLabel(k))} 목표 삭제">✕</button></div>`;
+              <button type="button" class="icon-btn small" data-budget-del="${esc(k)}" aria-label="${esc(unitLabel(k))} 목표 삭제"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>`;
           }).join('')}</div>` : '<p class="empty">아직 정한 목표가 없어요. 아래에서 항목을 추가하세요.</p>'}
           ${addable.length ? `<div class="budget-add">
             <select class="input" id="budget-add-key" aria-label="목표를 추가할 항목">
@@ -2025,7 +2027,7 @@ function checkRecurringForm() {
   hint.hidden = true;
   if (form.id || form.typeTouched || form.type !== 'variable' || !form.owner) return;
   const cand = { owner: form.owner, type: 'variable', date: $('#tx-date').value,
-    amount: parseAmount($('#tx-amount').value), memo: $('#tx-memo').value.trim() };
+    amount: calcAmount($('#tx-amount').value), memo: $('#tx-memo').value.trim() };
   if (!cand.date || !cand.amount || !cand.memo) return;
   cand.category = form.category || makeClassifier()(cand.memo).category;
   const hit = findRecurring([...S.tx, cand]).get(recurKey(cand));
@@ -2072,7 +2074,7 @@ function updateBudgetHint() {
   const goalN = counts[key] || 0;
   const spent = S.tx.filter((t) => unitMatch(key, t) && t.date.startsWith(ym) && t.id !== form.id).reduce((a, t) => a + t.amount, 0);
   const usedN = unitCount(key, ym, form.id);
-  const amount = parseAmount($('#tx-amount').value);
+  const amount = calcAmount($('#tx-amount').value);
   const after = spent + amount;
   const parts = [];
   let st = 'ok';
@@ -2106,6 +2108,7 @@ function openTx(tx) {
   $('#tx-title').textContent = t ? '내역 수정' : '내역 입력';
   $('#tx-date').value = t?.date || (S.ym === today().slice(0, 7) ? today() : `${S.ym}-01`);
   $('#tx-amount').value = t ? fmt(t.amount) : '';
+  $('#tx-calc').hidden = true;
   $('#tx-memo').value = t?.memo || '';
   $('#tx-error').hidden = true;
   const del = $('#tx-delete');
@@ -2118,7 +2121,7 @@ function openTx(tx) {
 
 async function saveTx(keepOpen) {
   const err = $('#tx-error');
-  const amount = parseAmount($('#tx-amount').value);
+  const amount = calcAmount($('#tx-amount').value);
   const date = $('#tx-date').value;
   const problem = !form.owner ? '누구의 내역인지 선택하세요.'
     : !date ? '날짜를 입력하세요.'
@@ -2142,7 +2145,7 @@ async function saveTx(keepOpen) {
   }
   toast(form.id ? '수정했습니다' : `${TYPE_LABEL[data.type]} ${won(amount)} 저장`);
   if (keepOpen) {
-    $('#tx-amount').value = ''; $('#tx-memo').value = ''; form.category = '';
+    $('#tx-amount').value = ''; $('#tx-memo').value = ''; form.category = ''; $('#tx-calc').hidden = true;
     form.typeTouched = false; $('#tx-hint').hidden = true;
     form.sub = ''; form.subTouched = false;
     renderTxChoices(); $('#tx-amount').focus();
@@ -2200,6 +2203,23 @@ function armDelete(btn, action) {
 function formatAmountInput(input) {
   const n = parseAmount(input.value);
   input.value = n ? fmt(n) : '';
+}
+
+// 금액 칸 더하기: '12,000+3,500-1,000'처럼 적으면 합계로 저장한다 (암산하지 않게)
+const calcTerms = (str) => String(str).replace(/[−–]/g, '-').match(/[+-]?[^+-]+/g) || [];
+function calcAmount(str) {
+  return calcTerms(str).reduce((a, term) => {
+    const n = Number(term.replace(/[^\d]/g, '')) || 0;
+    return term.trim().startsWith('-') ? a - n : a + n;
+  }, 0);
+}
+function formatCalcInput(input) {
+  const raw = input.value.replace(/[−–]/g, '-').replace(/[^\d+-]/g, '').replace(/([+-])[+-]+/g, '$1').replace(/^[+-]+/, '');
+  input.value = raw.split(/([+-])/).map((p) => (/^\d+$/.test(p) ? fmt(Number(p)) : p)).join('');
+  const hasOp = /\d[+-]/.test(raw);
+  const out = $('#tx-calc');
+  out.hidden = !hasOp;
+  if (hasOp) out.textContent = `= ${won(calcAmount(raw))}`;
 }
 
 function bind() {
@@ -2420,7 +2440,15 @@ function bind() {
     if (sb) { form.sub = sb.dataset.v; form.subTouched = true; setPressed($('#tx-sub'), form.sub); updateBudgetHint(); return; }
     pick('#tx-method', 'method');
   });
-  $('#tx-amount').addEventListener('input', (e) => { formatAmountInput(e.target); updateBudgetHint(); });
+  $('#tx-amount').addEventListener('input', (e) => { formatCalcInput(e.target); updateBudgetHint(); });
+  // 휴대폰 숫자 키패드에는 + 키가 없어서 버튼으로 넣는다
+  $('#tx-plus').addEventListener('click', () => {
+    const inp = $('#tx-amount');
+    if (/\d$/.test(inp.value)) inp.value += '+';
+    formatCalcInput(inp);
+    inp.focus();
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+  });
   $('#tx-date').addEventListener('change', updateBudgetHint);
   $('#view-dashboard').addEventListener('click', (e) => {
     const edit = e.target.closest('[data-edit-tx]');
