@@ -1,0 +1,29 @@
+# main에 합쳐지면 Firebase Hosting(ih-money.web.app)에 자동 배포한다.
+# 필요한 GitHub 비밀값: FIREBASE_SERVICE_ACCOUNT_IH_MONEY
+#   (PC의 money 폴더에서 `firebase init hosting:github` 를 한 번 실행하면 자동으로 만들어 등록해 준다)
+name: Firebase 배포
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # Actions 탭에서 손으로 다시 돌릴 때
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_IH_MONEY }}
+          channelId: live
+          projectId: ih-money

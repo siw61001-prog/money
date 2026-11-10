@@ -25,3 +25,14 @@
 공통
   - Google Cloud 콘솔에서 API 키 사용처를 제한해 두었다면, 새 주소도 허용 목록에 추가하세요.
   - 샘플(데모) 화면은 주소 끝에 ?demo=1
+
+자동 배포 (한 번만 설정)
+  GitHub main 브랜치에 합쳐지면 .github/workflows/firebase-deploy.yml 이 자동으로 Firebase에 올립니다.
+  처음 한 번, PC의 money 폴더에서:
+    firebase init hosting:github
+  - 저장소를 물으면  siw61001-prog/money
+  - "build script" 를 물으면 N (빌드할 것이 없음)
+  - "deploy when a PR is merged" 는 Y, 브랜치는 main
+  - 이 과정에서 GitHub 비밀값 FIREBASE_SERVICE_ACCOUNT_IH_MONEY 가 자동 등록됩니다.
+  - 이 명령이 money 폴더에 만든 .github 파일들은 GitHub에 올리지 않아도 됩니다 (저장소에 이미 있음).
+  확인: GitHub 저장소 > Actions 탭에서 "Firebase 배포" 가 초록 체크면 성공.
