@@ -26,8 +26,9 @@
   --saving-fill: #5C9A44;
   --warn-fill: #D9962B;
   --fixed-fill: #8A93A1;
-  --p1: #4F86C6;
-  --p2: #D9789A;
+  /* 사람 색: 의미 색(수입 파랑·지출 빨강·저축 초록·주의 주황)과 겹치지 않게 보라·분홍 */
+  --p1: #7C63C7;
+  --p2: #D0659F;
   --shadow: 0 1px 2px rgba(30, 34, 28, .05), 0 2px 10px rgba(30, 34, 28, .05);
   --radius: 16px;
   --radius-sm: 10px;
@@ -577,3 +578,81 @@ textarea.input { width: 100%; resize: vertical; line-height: 1.55; font-size: 14
 .calc-plus:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .calc-plus .ico { width: 20px; height: 20px; stroke-width: 2.2; }
 .calc-result { font-size: var(--t-sm); font-weight: 700; color: var(--accent); text-align: right; }
+
+/* ---------- 내역 입력: 금액 → 가게 → 분류, 나머지는 요약 줄 ---------- */
+#tx-amount { font-size: var(--t-xl); font-weight: 700; }
+.recent-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.recent-chips::-webkit-scrollbar { display: none; }
+.recent-chips:empty { display: none; }
+.recent-chips button {
+  flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
+  padding: 6px 12px; font-size: var(--t-sm); font-weight: 500; cursor: pointer; white-space: nowrap; min-height: 34px;
+}
+.recent-chips button:hover { background: var(--surface-2); }
+.tx-summary {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s3); width: 100%;
+  border: 1px solid var(--line); background: var(--surface-2); border-radius: var(--radius-sm);
+  padding: 10px 14px; min-height: 44px; cursor: pointer; text-align: left; font-size: 14px; color: var(--ink);
+}
+.tx-summary-edit { color: var(--accent); font-weight: 600; font-size: var(--t-sm); white-space: nowrap; }
+.tx-more { display: grid; gap: 14px; padding: var(--s1) 0; }
+.date-row { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+.date-row input[type="date"] { flex: 1 1 150px; width: auto; }
+/* 저장 버튼은 시트 아래에 붙여 두어 스크롤하지 않아도 누를 수 있게 */
+#tx-form { padding-bottom: 20px; }
+#tx-form .sheet-actions {
+  position: sticky; bottom: 0; z-index: 2; background: var(--surface);
+  margin: 0 -20px -20px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- 이번 달 상태 (대시보드 맨 위) ---------- */
+.month-status .card-head { margin-bottom: var(--s3); }
+.ms-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4) var(--s8); align-items: end; }
+.ms-main { display: grid; gap: 2px; }
+.ms-main .label { font-size: var(--t-sm); }
+.ms-big { font-size: 34px; font-weight: 750; letter-spacing: -.03em; line-height: 1.15; }
+.ms-daily { font-size: var(--t-md); color: var(--ink); margin-top: 2px; }
+.ms-daily b { color: var(--saving); }
+.ms-facts { margin: 0; display: grid; gap: var(--s2); }
+.ms-facts > div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+.ms-facts > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.ms-facts dt { color: var(--muted); font-size: var(--t-sm); }
+.ms-facts dd { margin: 0; font-weight: 700; white-space: nowrap; }
+.ms-facts small { color: var(--muted); font-weight: 500; }
+.ms-status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: var(--s4); padding-top: var(--s3); border-top: 1px solid var(--line); }
+.ms-verdict { font-weight: 700; font-size: 14px; margin-right: var(--s1); }
+.ms-verdict.ok { color: var(--saving); } .ms-verdict.warn { color: var(--warn); } .ms-verdict.over { color: var(--expense); }
+.ms-status button.pill { border: 0; cursor: pointer; font: inherit; font-size: var(--t-sm); font-weight: 600; padding: 4px 10px; min-height: 30px; }
+.ms-status button.pill::after { content: " ›"; }
+
+/* ---------- 분석 (접힘) ---------- */
+.analysis > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap;
+  padding: var(--s4) var(--s5); background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow);
+  font-weight: 700; font-size: var(--t-lg);
+}
+.analysis > summary::-webkit-details-marker { display: none; }
+.analysis > summary::before { content: "›"; display: inline-block; width: 14px; color: var(--muted); transition: transform .15s; }
+.analysis[open] > summary::before { transform: rotate(90deg); }
+.analysis > summary .sub { font-size: var(--t-sm); font-weight: 500; color: var(--muted); }
+.analysis[open] > summary { margin-bottom: var(--s4); }
+@media (max-width: 720px) {
+  .ms-grid { grid-template-columns: minmax(0, 1fr); }
+  .ms-big { font-size: 30px; }
+  .analysis > summary { padding: var(--s3) var(--s4); }
+  .analysis[open] > summary { margin-bottom: var(--s3); }
+}
+.recur-main select.recur-cat { width: auto; padding: 3px 8px; font-size: var(--t-xs); font-weight: 600; border-radius: 6px; background: #E8EAEE; border-color: transparent; color: #474F5C; min-height: 28px; }
+.recur-main select.recur-cat:has(option[value=""]:checked) { background: #F7ECD9; color: var(--warn); }
+
+/* PC: 떠 있는 입력 버튼이 목록 금액을 가려서 상단바 버튼으로 바꾼다 */
+.add-top {
+  order: 6; display: inline-flex; align-items: center; gap: 6px; border: 0; background: var(--accent); color: var(--accent-ink);
+  border-radius: 999px; padding: 7px 14px 7px 10px; font-size: 13.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.add-top:hover { background: #336A23; }
+.add-top .ico { width: 18px; height: 18px; stroke-width: 2.2; }
+.add-top[hidden] { display: none; }
+@media (min-width: 721px) { .fab { display: none !important; } }
+@media (max-width: 720px) { .add-top { display: none !important; } }

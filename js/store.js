@@ -1,6 +1,6 @@
 // 저장소 계층: Firebase(Firestore) 또는 데모(localStorage) 중 하나를 같은 인터페이스로 제공한다.
-import { firebaseConfig } from './firebase-config.js?v=20261109b';
-import { buildSample, SAMPLE_MEMBERS } from './sample.js?v=20261109b';
+import { firebaseConfig } from './firebase-config.js?v=20261110a';
+import { buildSample, SAMPLE_MEMBERS } from './sample.js?v=20261110a';
 
 // 주소에 ?demo=1 을 붙이면 실제 데이터 대신 이 브라우저의 데모 데이터(가상의 두 사람 샘플)로 연다
 const params = new URLSearchParams(location.search);
