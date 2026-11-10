@@ -1,5 +1,5 @@
-import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261109a';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261109a';
+import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261110a';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261110a';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -47,6 +47,7 @@ const S = {
   mergeTo: '',
   mergeArmed: false,
   history: {}, // 월별 자산 기록
+  recurPick: {}, // 반복 결제 제안에서 고른 고정비용 분류
   histForm: false,
 };
 if (S.who !== 'all' && !MEMBERS.includes(S.who)) S.who = 'all';
@@ -139,6 +140,7 @@ function renderChrome() {
   $('#fab').hidden = !(S.ready && S.user) || S.view === 'settings' || S.view === 'assets';
   $('#mode-badge').hidden = S.store?.mode !== 'demo';
   $('#share-top').hidden = !(S.ready && S.user);
+  $('#add-top').hidden = !(S.ready && S.user);
   // 로그인 전에는 사람·월 선택과 탭을 숨긴다
   const signedIn = !!S.user;
   $('#who-seg').hidden = !signedIn;
@@ -156,18 +158,32 @@ function render() {
 }
 
 /* ---------- 대시보드 ---------- */
-function deltaText(cur, prev, goodWhenDown) {
+function deltaText(cur, prev, goodWhenDown, label = '전월 대비') {
   if (!prev) return '';
   const d = cur - prev;
-  if (Math.abs(d) < 1) return '전월과 같음';
+  if (Math.abs(d) < 1) return `${label.replace(' 대비', '')}과 같음`;
   const cls = (d > 0) === goodWhenDown ? 'up' : 'down';
-  return `<span class="${cls}">${d > 0 ? '▲' : '▼'} ${shortWon(Math.abs(d))}</span> 전월 대비`;
+  return `<span class="${cls}">${d > 0 ? '▲' : '▼'} ${shortWon(Math.abs(d))}</span> ${label}`;
 }
+
+// 이번 달이 진행 중이면 지난달도 같은 날짜까지만 잘라 비교한다 (월초에 '▼318만' 같은 착시 방지)
+function prevMonthSameDay(list) {
+  const pym = shiftYM(S.ym, -1);
+  const prog = monthProgress(S.ym);
+  if (!prog.current) return { stats: stats(inMonth(list, pym)), label: '전월 대비' };
+  const day = Number(today().slice(8));
+  const days = new Date(Number(pym.slice(0, 4)), Number(pym.slice(5)), 0).getDate();
+  const cut = `${pym}-${String(Math.min(day, days)).padStart(2, '0')}`;
+  return { stats: stats(inMonth(list, pym).filter((t) => t.date <= cut)), label: `${Number(pym.slice(5))}월 1~${Math.min(day, days)}일 대비` };
+}
+
+// 저축률: 수입이 없거나(월급 전) 진행 중인 달에 수입보다 지출이 많으면 의미 없는 % 대신 '–'
+const rateText = (s) => (s.income <= 0 || (monthProgress(S.ym).current && s.income < s.spend) ? '–' : pct(s.rate));
+const beforePay = (s) => monthProgress(S.ym).current && s.income < s.spend;
 
 function renderDashboard() {
   const list = scopedTx();
   const cur = stats(inMonth(list, S.ym));
-  const prev = stats(inMonth(list, shiftYM(S.ym, -1)));
   const year = S.ym.slice(0, 4);
   const monthNo = Number(S.ym.slice(5));
   const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
@@ -210,27 +226,28 @@ function renderDashboard() {
       <div class="table-wrap"><table class="stack-table">
         <thead><tr><th>이름</th><th>수입</th><th>고정비용</th><th>소비지출</th><th>실제 저축</th><th>저축률</th></tr></thead>
         <tbody>
-          ${[...MEMBERS.map((m) => [m, stats(inMonth(scopedTx(m), S.ym))]), ['합계', cur]].map(([m, s]) => `
+          ${MEMBERS.map((m) => [m, stats(inMonth(scopedTx(m), S.ym))]).map(([m, s]) => `
             <tr${m === '합계' ? ' class="total"' : ''}><td class="stack-title">${m === '합계' ? '합계' : `<span class="dot" style="background:${memberColor(m)}"></span> ${esc(m)}`}</td>
               <td data-label="수입" class="c-income">${fmt(s.income)}</td><td data-label="고정비용">${fmt(s.fixed)}</td><td data-label="소비지출">${fmt(s.variable)}</td>
-              <td data-label="실제 저축" class="${s.saved >= 0 ? 'c-saving' : 'c-expense'}">${fmt(s.saved)}</td><td data-label="저축률">${pct(s.rate)}</td></tr>`).join('')}
+              <td data-label="실제 저축" class="${s.saved >= 0 ? 'c-saving' : 'c-expense'}">${fmt(s.saved)}</td><td data-label="저축률">${rateText(s)}</td></tr>`).join('')}
         </tbody>
       </table></div>
     </article>` : '';
 
   $('#view-dashboard').innerHTML = `
+    <div class="grid">${monthStatusCard(hhCats, monthNo)}</div>
     <div class="kpis kpis-3">
       <div class="kpi"><div class="k-label">수입</div><div class="k-value c-income">${won(cur.income)}</div>
-        <div class="k-foot">${deltaText(cur.income, prev.income, false) || '&nbsp;'}</div></div>
+        <div class="k-foot">${(() => { const p = prevMonthSameDay(list); return deltaText(cur.income, p.stats.income, false, p.label); })() || '&nbsp;'}</div></div>
       <div class="kpi"><div class="k-label">지출 (고정+소비)</div><div class="k-value c-expense">${won(cur.spend)}</div>
         <div class="k-foot">고정 ${shortWon(cur.fixed)} · 소비 ${shortWon(cur.variable)}</div></div>
-      <div class="kpi hero"><div class="k-label">실제 저축 · 저축률 ${pct(cur.rate)}</div><div class="k-value${cur.saved < 0 ? ' neg' : ''}">${won(cur.saved)}</div>
-        <div class="k-foot">수입 − 고정비용 − 소비지출</div></div>
+      <div class="kpi hero"><div class="k-label">실제 저축 · 저축률 ${rateText(cur)}</div><div class="k-value${cur.saved < 0 ? ' neg' : ''}">${won(cur.saved)}</div>
+        <div class="k-foot">${beforePay(cur) ? '아직 수입보다 지출이 많아요. 월급이 들어오면 바뀌어요' : '수입 − 고정비용 − 소비지출'}</div></div>
     </div>
 
     <div class="grid">
-      ${statusCard(hhCats, monthNo)}
-      <article class="card span-4">
+      ${budgetCard(hhCats, hhCats[0]?.[1].sum || 1, { variable: hhVariable }, monthNo, hhTx)}
+      <article class="card span-6">
         <div class="card-head"><h2>저축 목표 <small class="muted-tag">통합</small></h2><span class="sub">월 목표 ${won(goal)}</span></div>
         <div class="goal-row">
           <div class="goal-top"><span>${monthNo}월 실제 저축</span><span><strong>${shortWon(hhCur.saved)}</strong> / ${shortWon(goal)}</span></div>
@@ -242,15 +259,16 @@ function renderDashboard() {
           <div class="progress"><span style="width:${yearGoal ? Math.max(0, Math.min(100, (ytdSaved / yearGoal) * 100)) : 0}%"></span></div>
           <span class="hint">${yearGoal ? `연간 목표 대비 ${pct(ytdSaved / yearGoal)}` : ''}</span>
         </div>
-        <div class="goal-row">
-          <div class="goal-top"><span>${monthNo}월 남은 돈</span><span class="${hhCur.left >= 0 ? 'c-saving' : 'c-expense'}"><strong>${won(hhCur.left)}</strong></span></div>
-          <span class="hint">수입에서 지출과 적금·저축 이체를 뺀 금액</span>
-        </div>
+        ${hhCur.saving > 0 ? `<div class="goal-row">
+          <div class="goal-top"><span>저축 이체 ${shortWon(hhCur.saving)} 빼고 남은 돈</span><span class="${hhCur.left >= 0 ? 'c-saving' : 'c-expense'}"><strong>${won(hhCur.left)}</strong></span></div>
+        </div>` : ''}
       </article>
+    </div>
 
+    <details class="analysis" ${local.get('analysisOpen', '0') === '1' ? 'open' : ''}>
+      <summary><span>분석</span><span class="sub">사람별 비교 · 최근 3개월 · 일별 · 연간 흐름</span></summary>
+    <div class="grid">
       ${perPerson}
-
-      ${budgetCard(hhCats, hhCats[0]?.[1].sum || 1, { variable: hhVariable }, monthNo, hhTx)}
 
       ${threeMonthCard(list)}
 
@@ -274,9 +292,9 @@ function renderDashboard() {
         <div class="card-head"><h2>${year}년 월별 흐름</h2><span class="sub">${esc(scopeName)} · 막대: 수입/지출, 선: 실제 저축</span></div>
         <div class="chart-box"><canvas id="chart-year" aria-label="월별 수입, 지출, 저축 차트"></canvas></div>
       </article>
-    </div>`;
+    </div>
+    </details>`;
 
-  drawStatusChart(hhCats);
   drawYearChart(months, monthly);
   drawDailyChart(monthTx);
   drawThreeMonthChart(list);
@@ -290,14 +308,6 @@ function countBadge(key) {
   if (!goal) return '';
   const used = unitCount(key, S.ym);
   return `<em class="${countState(used, goal)}">${used}/${goal}회</em>`;
-}
-function countGoalsLine() {
-  const goals = Object.entries(householdCounts());
-  if (!goals.length) return '';
-  return `<div class="count-goals"><span class="label">횟수 목표</span>${goals.sort(([a], [b]) => goalRank(a) - goalRank(b)).map(([k, g]) => {
-    const used = unitCount(k, S.ym);
-    return `<span class="pill ${countState(used, g)}">${esc(unitLabel(k))} ${used}/${g}회${used > g ? ` (${used - g}회 초과)` : ''}</span>`;
-  }).join('')}</div>`;
 }
 
 // 목표 순서: 설정에서 ▲▼로 정한 순서를 대시보드도 그대로 따른다.
@@ -323,136 +333,50 @@ function statusRows(hhCats) {
   }).sort((a, b) => goalRank(a.c) - goalRank(b.c) || b.spent - a.spent);
 }
 
-function statusCard(hhCats, monthNo) {
+// 대시보드 맨 위: "이번 달 괜찮은가"에 바로 답한다. 큰 숫자는 남은 예산 하나.
+// 모든 숫자는 '예산 항목'끼리만 계산하고(분모를 섞지 않음), 예산 없는 분류는 '예산 밖 지출'로 따로 보여준다.
+function monthStatusCard(hhCats, monthNo) {
   const rows = statusRows(hhCats);
   const prog = monthProgress(S.ym);
   const budgeted = rows.filter((r) => r.budget);
   const tBudget = budgeted.reduce((a, r) => a + r.budget, 0);
   const tSpent = budgeted.reduce((a, r) => a + r.spent, 0);
   const allSpent = rows.reduce((a, r) => a + r.spent, 0);
-  const over = rows.filter((r) => r.state === 'over').length;
-  const warn = rows.filter((r) => r.state === 'warn').length;
+  const outside = allSpent - tSpent;
   const left = tBudget - tSpent;
   const dayNo = Number(today().slice(8));
   const daysInMonth = new Date(Number(S.ym.slice(0, 4)), Number(S.ym.slice(5)), 0).getDate();
-  const forecast = prog.current && dayNo ? Math.round((allSpent / dayNo) * daysInMonth) : 0;
-  return `<article class="card span-8 status-card">
-    <div class="card-head"><h2>${monthNo}월 분류별 사용 현황</h2>
-      <span class="sub">통합 · ${prog.current ? `${dayNo}일 기준 실시간` : '월 마감'}${S.who !== 'all' ? ' · 예산은 두 사람 합산 기준' : ''}</span></div>
-    <div class="status-summary">
-      <div><span class="label">소비지출</span><strong>${won(allSpent)}</strong></div>
-      ${tBudget ? `<div><span class="label">예산 대비</span><strong class="${budgetState(tSpent, tBudget, prog.elapsed)}-text">${pct(tSpent / tBudget)}</strong>
-        <span class="hint">${won(tSpent)} / ${won(tBudget)}</span></div>
-      <div><span class="label">${left >= 0 ? '남은 예산' : '초과'}</span><strong class="${left >= 0 ? 'c-saving' : 'c-expense'}">${won(Math.abs(left))}</strong>
-        ${prog.current && left > 0 ? `<span class="hint">하루 ${won(Math.floor(left / prog.left))} · ${prog.left}일 남음</span>` : ''}</div>` : ''}
-      ${forecast ? `<div><span class="label">이 속도면 월말</span><strong>${won(forecast)}</strong></div>` : ''}
-      ${over || warn ? `<div class="status-chips">${over ? `<span class="pill over">초과 ${over}개</span>` : ''}${warn ? `<span class="pill warn">주의 ${warn}개</span>` : ''}</div>` : ''}
-    </div>
-    ${(tBudget ? budgeted.length : rows.length)
-      ? `<div class="chart-box" style="height:${Math.max(160, (tBudget ? budgeted.length : rows.length) * 30 + 40)}px"><canvas id="chart-status" aria-label="분류별 예산 대비 사용률 막대그래프"></canvas></div>`
-      : `<p class="empty">${monthNo}월 소비지출이 아직 없어요.</p>`}
-    ${countGoalsLine()}
-    ${tBudget && rows.some((r) => !r.budget && r.spent)
-      ? `<p class="hint no-budget">예산 없는 분류: ${rows.filter((r) => !r.budget && r.spent).map((r) => `${esc(unitLabel(r.c))} ${shortWon(r.spent)}`).join(' · ')}</p>` : ''}
-    ${!tBudget ? '<p class="hint">설정 → 분류별 월 예산을 정하면 분류마다 예산의 몇 %를 썼는지 보여드려요. <a href="#settings">예산 정하기 →</a></p>'
-      : `<p class="hint">분류마다 자기 예산을 100%로 놓고 몇 %를 썼는지 보여줘요.${prog.current ? ' 세로 점선은 오늘 날짜 위치예요. 막대가 선보다 길면 날짜보다 빨리 쓰는 중이에요.' : ''}</p>`}
-  </article>`;
-}
-
-// 막대 끝에 숫자를, 이번 달이면 오늘 날짜 위치에 세로 점선을 그리는 작은 플러그인
-const statusLabels = {
-  id: 'statusLabels',
-  afterDatasetsDraw(chart, _args, opts) {
-    const { ctx, chartArea, scales } = chart;
-    const meta = chart.getDatasetMeta(0);
-    ctx.save();
-    ctx.font = `600 12px ${cssVar('--font') || 'sans-serif'}`;
-    ctx.textBaseline = 'middle';
-    meta.data.forEach((bar, i) => {
-      const text = opts.labels[i];
-      if (!text) return;
-      const w = ctx.measureText(text).width;
-      // 오른쪽에 자리가 없으면 막대 안쪽(흰 글씨)에 쓴다
-      const inside = bar.x + 6 + w > chart.width - 4 && bar.x - bar.base > w + 12;
-      ctx.fillStyle = inside ? '#fff' : cssVar('--ink');
-      ctx.textAlign = inside ? 'right' : 'left';
-      ctx.fillText(text, inside ? bar.x - 6 : bar.x + 6, bar.y);
-    });
-    if (opts.pace != null) {
-      const x = scales.x.getPixelForValue(opts.pace);
-      ctx.strokeStyle = cssVar('--ink');
-      ctx.globalAlpha = 0.45;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath(); ctx.moveTo(x, chartArea.top); ctx.lineTo(x, chartArea.bottom); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 0.8;
-      ctx.fillStyle = cssVar('--muted');
-      ctx.textAlign = 'center';
-      ctx.font = `600 11px ${cssVar('--font') || 'sans-serif'}`;
-      ctx.fillText(`오늘 ${Math.round(opts.pace)}%`, x, chartArea.top - 8);
-    }
-    ctx.restore();
-  },
-};
-
-// 예산이 있으면 분류마다 자기 예산을 100%로 놓은 사용률 막대, 없으면 쓴 금액 막대
-function drawStatusChart(hhCats) {
-  charts.status?.destroy();
-  const el = $('#chart-status');
-  if (!el || !chartDefaults()) return;
-  const all = statusRows(hhCats);
-  const byBudget = all.some((r) => r.budget);
-  const rows = byBudget ? all.filter((r) => r.budget) : all;
-  const prog = monthProgress(S.ym);
-  const color = (st) => cssVar(st === 'over' ? '--expense' : st === 'warn' ? '--warn' : st === 'ok' ? '--saving' : '--muted');
-  const ratio = (r) => (r.spent / r.budget) * 100;
-  // 가로축은 125%까지만 (넘은 분류는 막대를 125%에서 자르고 숫자로 실제 값을 보여준다)
-  const axisMax = byBudget ? 125 : undefined;
-  const value = (r) => (byBudget ? Math.min(ratio(r), axisMax) : r.spent);
-  const counts = householdCounts();
-  const cnt = (r) => (counts[r.c] ? ` · ${unitCount(r.c, S.ym)}/${counts[r.c]}회` : '');
-  const narrow = el.clientWidth < 480;
-  const labels = rows.map((r) => (byBudget
-    ? (narrow ? `${Math.round(ratio(r))}% · ${shortWon(r.spent)}` : `${Math.round(ratio(r))}% · ${shortWon(r.spent)} / ${shortWon(r.budget)}${cnt(r)}`)
-    : `${shortWon(r.spent)}${cnt(r)}`));
-  const datasets = [{
-    label: '사용', data: rows.map(value), backgroundColor: rows.map((r) => color(r.state)),
-    borderRadius: 5, barPercentage: 0.6, categoryPercentage: 0.9, grouped: false, order: 1,
-  }];
-  if (byBudget) {
-    datasets.push({
-      label: '예산', data: rows.map(() => 100), backgroundColor: 'rgba(138, 130, 116, .16)',
-      borderRadius: 5, barPercentage: 0.95, categoryPercentage: 0.9, grouped: false, order: 2,
-    });
+  const forecast = prog.current && dayNo ? Math.round((tSpent / dayNo) * daysInMonth) : 0;
+  const over = budgeted.filter((r) => r.state === 'over');
+  const warn = budgeted.filter((r) => r.state === 'warn');
+  const chip = (r) => `<button type="button" class="pill ${r.state}" data-jump-cat="${esc(r.c)}">${esc(unitLabel(r.c))}</button>`;
+  if (!tBudget) {
+    return `<article class="card span-12 month-status">
+      <div class="card-head"><h2>${monthNo}월 상태</h2><a class="sub" href="#settings" data-goto-budget>예산 정하기</a></div>
+      <div class="ms-main"><span class="label">소비지출</span><strong class="ms-big">${won(allSpent)}</strong></div>
+      <p class="hint">설정에서 분류별 예산을 정하면 남은 예산과 하루에 쓸 수 있는 돈을 여기서 보여드려요.</p>
+    </article>`;
   }
-  charts.status = new Chart(el, {
-    type: 'bar',
-    data: { labels: rows.map((r) => unitLabel(r.c)), datasets },
-    plugins: [statusLabels],
-    options: {
-      indexAxis: 'y',
-      maintainAspectRatio: false,
-      layout: { padding: { top: byBudget && prog.current ? 16 : 0, right: 8 } },
-      plugins: {
-        legend: { display: false },
-        statusLabels: { labels, pace: byBudget && prog.current ? prog.elapsed * 100 : null },
-        tooltip: { filter: (c) => c.datasetIndex === 0, callbacks: {
-          label: (c) => {
-            const r = rows[c.dataIndex];
-            if (!r.budget) return `사용 ${won(r.spent)} (예산 없음)`;
-            const left = r.budget - r.spent;
-            return `사용 ${won(r.spent)} / 예산 ${won(r.budget)} · ${left >= 0 ? `남음 ${won(left)}` : `${won(-left)} 초과`}`;
-          },
-        } },
-      },
-      scales: {
-        x: byBudget
-          ? { min: 0, max: axisMax, ticks: { stepSize: 25, callback: (v) => `${v}%` }, grid: { color: (c) => (c.tick.value === 100 ? cssVar('--muted') : cssVar('--line')) } }
-          : { ticks: { callback: (v) => shortWon(v) }, grid: { color: cssVar('--line') } },
-        y: { grid: { display: false }, ticks: { font: { size: narrow ? 12 : 13, weight: '600' }, color: cssVar('--ink') } },
-      },
-    },
-  });
+  const verdict = over.length ? `<span class="ms-verdict over">초과 ${over.length}개</span>`
+    : warn.length ? `<span class="ms-verdict warn">주의 ${warn.length}개</span>`
+      : `<span class="ms-verdict ok">${prog.current ? '예산 안에서 쓰는 중' : '예산 안에서 마감'}</span>`;
+  return `<article class="card span-12 month-status">
+    <div class="card-head"><h2>${monthNo}월 상태</h2>
+      <span class="sub">${prog.current ? `${dayNo}일 기준 · ${prog.left}일 남음` : '월 마감'}${S.who !== 'all' ? ' · 두 사람 합산' : ''}</span></div>
+    <div class="ms-grid">
+      <div class="ms-main">
+        <span class="label">${left >= 0 ? '남은 예산' : '예산 초과'}</span>
+        <strong class="ms-big ${left >= 0 ? '' : 'c-expense'}">${won(Math.abs(left))}</strong>
+        ${prog.current && left > 0 ? `<span class="ms-daily">하루 <b>${won(Math.floor(left / prog.left))}</b>까지 쓸 수 있어요</span>` : ''}
+      </div>
+      <dl class="ms-facts">
+        <div><dt>예산 항목 사용액</dt><dd>${won(tSpent)} <small>/ ${shortWon(tBudget)} · ${pct(tSpent / tBudget)}</small></dd></div>
+        ${forecast ? `<div><dt>이 속도면 월말 <small>(단순 일할 계산)</small></dt><dd class="${forecast > tBudget ? 'c-expense' : ''}">${won(forecast)}</dd></div>` : ''}
+        ${outside > 0 ? `<div><dt>예산 밖 지출</dt><dd>${won(outside)}</dd></div>` : ''}
+      </dl>
+    </div>
+    <div class="ms-status">${verdict}${[...over, ...warn].map(chip).join('')}</div>
+  </article>`;
 }
 
 /* ---------- 최근 3개월 합산 지출 ---------- */
@@ -519,8 +443,8 @@ function drawThreeMonthChart(list) {
     data: {
       labels: ms.map((m) => `${Number(m.slice(5))}월`),
       datasets: [
-        { label: '고정비용', data: per.map((s) => s.fixed), backgroundColor: cssVar('--warn'), borderRadius: 4, maxBarThickness: 46 },
-        { label: '소비지출', data: per.map((s) => s.variable), backgroundColor: cssVar('--expense'), borderRadius: 4, maxBarThickness: 46 },
+        { label: '고정비용', data: per.map((s) => s.fixed), backgroundColor: cssVar('--fixed-fill'), borderRadius: 4, maxBarThickness: 46 },
+        { label: '소비지출', data: per.map((s) => s.variable), backgroundColor: cssVar('--expense-fill'), borderRadius: 4, maxBarThickness: 46 },
       ],
     },
     options: {
@@ -693,25 +617,12 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
         : `<p class="empty">${ymLabel(S.ym)} 소비지출이 없습니다. 오른쪽 아래 ‘내역 입력’으로 추가하세요.</p>`}
     </article>`;
   }
-  const totalBudget = budgeted.reduce((a, c) => a + budgets[c], 0);
-  const totalSpent = budgeted.reduce((a, c) => a + spentFor(c), 0);
-  const totalState = budgetState(totalSpent, totalBudget, prog.elapsed);
-  const leftMoney = totalBudget - totalSpent;
   const rows = budgeted.map((c) => ({ c, spent: spentFor(c), budget: budgets[c] }))
     .sort((a, b) => goalRank(a.c) - goalRank(b.c));
   // 예산 없는 단위 (상위 분류 전체에 예산이 있으면 그 하위 분류는 이미 포함된 것으로 본다)
   const extra = cats.filter(([c]) => !budgets[c] && !(c.includes('|') && budgets[c.split('|')[0]]));
-  const message = !prog.current ? (leftMoney >= 0 ? `예산보다 ${won(leftMoney)} 덜 썼어요` : `예산을 ${won(-leftMoney)} 넘었어요`)
-    : leftMoney < 0 ? `벌써 예산을 ${won(-leftMoney)} 넘었어요`
-      : `남은 ${prog.left}일 동안 하루 ${won(Math.floor(leftMoney / prog.left))}까지 쓸 수 있어요`;
-  return `<article class="card span-6">
-    <div class="card-head"><h2>${monthNo}월 예산 <small class="muted-tag">통합</small></h2><a class="sub" href="#settings" data-goto-budget>예산 수정 →</a></div>
-    <div class="budget-total ${totalState}">
-      <div class="goal-top"><span>예산 ${won(totalBudget)} 중 <strong>${won(totalSpent)}</strong> 사용</span><span class="pill ${totalState}">${pct(totalSpent / totalBudget)}</span></div>
-      <div class="progress budget"><span class="${totalState}" style="width:${Math.min(100, (totalSpent / totalBudget) * 100)}%"></span>
-        ${prog.current ? `<i class="pace" style="left:${prog.elapsed * 100}%" title="오늘까지 지난 날짜"></i>` : ''}</div>
-      <span class="hint">${message}</span>
-    </div>
+  return `<article class="card span-6" id="budget-card">
+    <div class="card-head"><h2>${monthNo}월 예산 <small class="muted-tag">통합</small></h2><a class="sub" href="#settings" data-goto-budget>예산 수정</a></div>
     <div class="bars budget-rows">${rows.map((r) => {
       const st = budgetState(r.spent, r.budget, prog.elapsed);
       const left = r.budget - r.spent;
@@ -719,7 +630,7 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
         <span class="bar-track"><span class="${st}" style="width:${Math.min(100, (r.spent / r.budget) * 100)}%"></span>
           ${prog.current ? `<i class="pace" style="left:${prog.elapsed * 100}%"></i>` : ''}</span>
         <span class="val">${fmt(r.spent)}<small>/ ${shortWon(r.budget)}</small>
-          <em class="${st}">${left >= 0 ? `남음 ${shortWon(left)}` : `${shortWon(-left)} 초과`}</em>${countBadge(r.c)}</span>`, monthTx);
+          <em class="${st}">${left < 0 ? `${shortWon(-left)} 초과` : `${st === 'warn' ? '주의 · ' : ''}남음 ${shortWon(left)}`}</em>${countBadge(r.c)}</span>`, monthTx);
     }).join('')}</div>
     ${extra.length ? `<h3 class="sub-head">예산 없는 분류</h3>
     <div class="bars budget-rows">${extra.map(([c, v]) => catItem(c, `<span class="name">${esc(unitLabel(c))}</span>
@@ -748,10 +659,10 @@ function drawYearChart(months, monthly) {
     data: {
       labels: months.map((m) => `${Number(m.slice(5))}월`),
       datasets: [
-        { type: 'bar', label: '수입', data: monthly.map((s) => s.income), backgroundColor: cssVar('--income'), borderRadius: 4, maxBarThickness: 18, order: 2 },
-        { type: 'bar', label: '지출', data: monthly.map((s) => s.spend), backgroundColor: cssVar('--expense'), borderRadius: 4, maxBarThickness: 18, order: 2 },
-        { type: 'line', label: '실제 저축', data: monthly.map((s) => (s.income || s.spend ? s.saved : null)), borderColor: cssVar('--saving'),
-          backgroundColor: cssVar('--saving'), tension: .3, pointRadius: 3, spanGaps: true, order: 1 },
+        { type: 'bar', label: '수입', data: monthly.map((s) => s.income), backgroundColor: cssVar('--income-fill'), borderRadius: 4, maxBarThickness: 18, order: 2 },
+        { type: 'bar', label: '지출', data: monthly.map((s) => s.spend), backgroundColor: cssVar('--expense-fill'), borderRadius: 4, maxBarThickness: 18, order: 2 },
+        { type: 'line', label: '실제 저축', data: monthly.map((s) => (s.income || s.spend ? s.saved : null)), borderColor: cssVar('--saving-fill'),
+          backgroundColor: cssVar('--saving-fill'), tension: .3, pointRadius: 3, spanGaps: true, order: 1 },
       ],
     },
     options: {
@@ -779,7 +690,7 @@ function drawDailyChart(monthTx) {
   for (const t of monthTx) if (t.type !== 'income' && !isSaving(t)) sums[Number(t.date.slice(8)) - 1] += t.amount;
   charts.daily = new Chart(el, {
     type: 'bar',
-    data: { labels: sums.map((_, i) => i + 1), datasets: [{ label: '지출', data: sums, backgroundColor: cssVar('--expense'), borderRadius: 3 }] },
+    data: { labels: sums.map((_, i) => i + 1), datasets: [{ label: '지출', data: sums, backgroundColor: cssVar('--expense-fill'), borderRadius: 3 }] },
     options: {
       maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { title: (c) => `${m}월 ${c[0].label}일`, label: (c) => won(c.raw) } } },
@@ -824,14 +735,22 @@ function renderList() {
   $('#view-list').innerHTML = `
     ${recur.length ? `<div class="card recur-card">
       <div class="card-head"><h2>고정비용으로 처리할까요?</h2>
-        <button type="button" class="btn small primary" data-recur-all>모두 고정비용으로</button></div>
+        <button type="button" class="btn small primary" data-recur-all ${recur.every((g) => recurPickOf(g)) ? '' : 'disabled title="분류를 모두 고르면 누를 수 있어요"'}>모두 고정비용으로</button></div>
       <p class="hint">소비지출로 들어가 있지만 같은 가게에서 비슷한 금액으로 두 달 이상 나간 결제입니다. 고정비용으로 옮기면 대시보드의 고정비용에 합산돼요.</p>
-      <ul class="mini-list">${recur.map((g) => `
-        <li><span class="pill fixed">${esc(fixedCategoryFor(g, g.items[0].memo))}</span>
-          <span class="grow">${esc(g.items[0].memo)}${S.who === 'all' ? ` <span class="meta">· ${esc(g.items[0].owner)}</span>` : ''}
-            <span class="meta">· 약 ${fmt(g.amount)}원 · ${g.months}개월 · 소비지출 ${g.variable.length}건</span></span>
-          <button type="button" class="btn small" data-recur-apply="${esc(g.key)}">고정비용으로</button>
-          <button type="button" class="btn small ghost" data-recur-ignore="${esc(g.key)}">아님</button></li>`).join('')}</ul>
+      ${(() => {
+        // 한 줄: 가게 이름 / 아래 줄: 옮길 분류·누구·금액, 오른쪽에 버튼 두 개. 3개 넘으면 접어 둔다
+        const li = (g) => `<li class="recur-item">
+          <span class="recur-main"><span class="recur-name">${esc(g.items[0].memo)}</span>
+            <span class="meta"><select class="input recur-cat" data-recur-cat="${esc(g.key)}" aria-label="${esc(g.items[0].memo)} 고정비용 분류">
+                ${recurPickOf(g) ? '' : '<option value="" selected>분류 고르기</option>'}
+                ${categoryOptions('fixed').map((c) => `<option ${recurPickOf(g) === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
+              ${S.who === 'all' ? `<span>${esc(g.items[0].owner)}</span>` : ''}<span>약 ${fmt(g.amount)}원 · ${g.months}개월째</span></span></span>
+          <span class="recur-actions"><button type="button" class="btn small" data-recur-apply="${esc(g.key)}" ${recurPickOf(g) ? '' : 'disabled'}>고정비용으로</button>
+            <button type="button" class="btn small ghost" data-recur-ignore="${esc(g.key)}">아님</button></span></li>`;
+        const head = recur.slice(0, 3); const rest = recur.slice(3);
+        return `<ul class="recur-list">${head.map(li).join('')}</ul>${rest.length ? `<details class="recur-more"><summary>${rest.length}개 더 보기</summary>
+          <ul class="recur-list">${rest.map(li).join('')}</ul></details>` : ''}`;
+      })()}
     </div>` : ''}
     <div class="card">
       <div class="toolbar">
@@ -1223,9 +1142,9 @@ function drawNetWorthChart() {
   const dashed = (pts) => (ctx) => (pts[ctx.p0DataIndex]?.kind === 'estimate' || pts[ctx.p1DataIndex]?.kind === 'estimate' ? [6, 5] : undefined);
   const datasets = [{
     label: S.who === 'all' ? '통합 순자산' : `${S.who} 순자산`,
-    data: main.map((p) => p.value), borderColor: cssVar('--accent'), backgroundColor: 'rgba(107,158,79,.12)',
+    data: main.map((p) => p.value), borderColor: cssVar('--accent-fill'), backgroundColor: cssVar('--accent-wash'),
     fill: true, tension: .3, borderWidth: 2.5,
-    pointRadius: main.map((p) => (p.kind === 'estimate' ? 2 : 4)), pointBackgroundColor: cssVar('--accent'),
+    pointRadius: main.map((p) => (p.kind === 'estimate' ? 2 : 4)), pointBackgroundColor: cssVar('--accent-fill'),
     segment: { borderDash: dashed(main) },
   }];
   if (S.who === 'all') {
@@ -1728,7 +1647,8 @@ function learnFromMatches(files) {
 // 금액이 다른 결제(같은 가게의 다른 구매)는 따로 본다. 한 달에 같은 금액이 여러 번 나오는 곳(뽑기 등)은 제외.
 const recurKey = (t) => `${t.owner}|${normMemo(String(t.memo || '').replace(FOREIGN, ''))}`;
 const SIMILAR = 0.15;
-const DAILY_CATS = new Set(['식비', '외식', '간식', '카페/간식', '생활비', '쇼핑', '미용', '인형뽑기', '선물', '여행', '이벤트', '경조사', '결혼 비용']);
+const DAILY_CATS = new Set(['식비', '외식', '간식', '카페/간식', '생활비', '쇼핑', '미용', '인형뽑기', '선물', '여행', '이벤트', '경조사', '결혼 비용',
+  '주유', '교통비', '의료/건강', '취미/여가']);
 // 장보기·식당·커피·편의점은 금액이 같아도 고정비용으로 묻지 않는다
 const NEVER_FIXED = new Set(['식비', '외식', '간식', '카페/간식']);
 const keywordCategory = (memo) => {
@@ -1782,14 +1702,19 @@ const FIXED_RULES = [
   ['공과금', ['한전', '전기', '가스', '수도']],
   ['통신/구독', ['SKT', 'KT', 'LGU', '유플러스', '통신', '인터넷', '모바일']],
 ];
-function fixedCategoryFor(rec, memo) {
+// 고정비용으로 쓴 적 있는 분류, 없으면 가게 이름 키워드(보험·관리비·통신 등). 둘 다 없으면 '' (사람이 고른다)
+function confidentFixedCategory(rec, memo) {
   const cats = categoryOptions('fixed');
   if (rec.fixedCat) return rec.fixedCat;
   const m = normMemo(memo);
-  const hit = FIXED_RULES.find(([c, words]) => cats.includes(c) && words.some((w) => m.includes(normMemo(w))));
-  if (hit) return hit[0];
-  return cats.includes('통신/구독') ? '통신/구독' : (cats[0] || '기타');
+  return FIXED_RULES.find(([c, words]) => cats.includes(c) && words.some((w) => m.includes(normMemo(w))))?.[0] || '';
 }
+function fixedCategoryFor(rec, memo) {
+  const cats = categoryOptions('fixed');
+  return confidentFixedCategory(rec, memo) || (cats.includes('기타') ? '기타' : (cats[0] || '기타'));
+}
+// 내역 화면 제안 카드에서 고른 분류 { 묶음 키: 분류 }
+const recurPickOf = (g) => S.recurPick[g.key] ?? confidentFixedCategory(g, g.items[0].memo);
 const ignoredRecurring = () => new Set(S.settings.ignoredRecurring || []);
 
 // 이미 저장된 소비지출 중 매달 반복되는 것 (현재 보고 있는 사람 기준)
@@ -1806,7 +1731,7 @@ async function moveRecurringToFixed(groups) {
   const fixedMethods = methodOptions('fixed');
   const updateTx = groups.flatMap((g) => g.variable.map((t) => ({
     id: t.id,
-    data: { type: 'fixed', category: fixedCategoryFor(g, t.memo), method: fixedMethods.includes(t.method) ? t.method : (fixedMethods[0] || '') },
+    data: { type: 'fixed', category: recurPickOf(g) || fixedCategoryFor(g, t.memo), method: fixedMethods.includes(t.method) ? t.method : (fixedMethods[0] || '') },
   })));
   await S.store.bulk({ updateTx });
   toast(`${updateTx.length}건을 고정비용으로 옮겼습니다`);
@@ -2004,8 +1929,47 @@ function renderTxChoices() {
   for (const t of S.tx) if (t.type === form.type && t.memo) memos.set(t.memo, (memos.get(t.memo) || 0) + 1);
   $('#memo-list').innerHTML = [...memos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 60)
     .map(([m]) => `<option value="${esc(m)}"></option>`).join('');
+  $('#tx-recent').innerHTML = recentMemos(form.type).map((m) => `<button type="button" data-memo="${esc(m)}">${esc(m)}</button>`).join('');
   renderSubChoices();
+  updateTxSummary();
   updateBudgetHint();
+}
+
+// 최근에 적은 가게 (그 구분에서 날짜 최신순, 중복 없이 8개). 누르면 마지막 내역의 분류·하위 분류·결제 수단을 채운다
+function recentMemos(type) {
+  const seen = new Set();
+  const out = [];
+  for (const t of [...S.tx].filter((x) => x.type === type && x.memo).sort((a, b) => b.date.localeCompare(a.date))) {
+    if (seen.has(t.memo)) continue;
+    seen.add(t.memo); out.push(t.memo);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+function applyMemo(memo) {
+  const hit = [...S.tx].filter((t) => t.type === form.type && t.memo === memo).sort((a, b) => b.date.localeCompare(a.date))[0];
+  $('#tx-memo').value = memo;
+  if (hit) {
+    form.category = hit.category;
+    if (hit.sub) { form.sub = hit.sub; form.subTouched = true; }
+    if (hit.method) form.method = hit.method;
+  }
+  renderTxChoices();
+  checkRecurringForm();
+}
+
+const isoDaysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+// 접어 둔 누구·구분·날짜·결제 수단을 한 줄로 보여준다
+function updateTxSummary() {
+  const date = $('#tx-date').value;
+  const dLabel = date === isoDaysAgo(0) ? '오늘' : date === isoDaysAgo(1) ? '어제' : date ? `${Number(date.slice(5, 7))}월 ${Number(date.slice(8))}일` : '날짜?';
+  $('#tx-summary-text').textContent = [form.owner || '누구?', TYPE_LABEL[form.type], dLabel, form.type === 'income' ? '' : form.method].filter(Boolean).join(' · ');
+  $$('#tx-date-chips button').forEach((b) => b.setAttribute('aria-pressed', String(isoDaysAgo(-Number(b.dataset.d)) === date)));
+}
+function setTxMore(open) {
+  $('#tx-more').hidden = !open;
+  $('#tx-more-btn').setAttribute('aria-expanded', String(open));
+  $('#tx-more-btn .tx-summary-edit').textContent = open ? '접기' : '바꾸기';
 }
 
 // 식비처럼 하위 분류가 있는 분류를 고르면 하위 분류 칩을 보여준다. 직접 고르기 전에는 메모(가게 이름)로 추정
@@ -2115,6 +2079,7 @@ function openTx(tx) {
   del.hidden = !t; del.textContent = '삭제'; delete del.dataset.armed;
   $('#tx-save-next').hidden = !!t;
   renderTxChoices();
+  setTxMore(!form.owner);
   $('#tx-dialog').showModal();
   if (!t) setTimeout(() => $('#tx-amount').focus(), 50);
 }
@@ -2127,7 +2092,7 @@ async function saveTx(keepOpen) {
     : !date ? '날짜를 입력하세요.'
     : !amount ? '금액을 입력하세요.'
     : !form.category ? '분류를 선택하세요.' : '';
-  if (problem) { err.textContent = problem; err.hidden = false; return; }
+  if (problem) { err.textContent = problem; err.hidden = false; if (!form.owner || !date) setTxMore(true); return; }
   const memo = $('#tx-memo').value.trim();
   const hasSub = form.type === 'variable' && subList(form.category).length > 0;
   const data = {
@@ -2236,6 +2201,7 @@ function bind() {
   $('#next-month').onclick = () => { S.ym = shiftYM(S.ym, 1); render(); };
   $('#month-label').onclick = () => { S.ym = today().slice(0, 7); render(); };
   $('#fab').onclick = () => openTx(null);
+  $('#add-top').onclick = () => openTx(null);
   $('#login-btn').onclick = async () => {
     try { await S.store.signIn(); } catch (e) {
       const el = $('#login-error'); el.textContent = `로그인 실패: ${e.message}`; el.hidden = false;
@@ -2264,6 +2230,7 @@ function bind() {
     if (ri) ignoreRecurring(ri.dataset.recurIgnore);
   });
   $('#view-list').addEventListener('change', (e) => {
+    if (e.target.dataset.recurCat != null) { S.recurPick[e.target.dataset.recurCat] = e.target.value; const y = window.scrollY; renderList(); window.scrollTo(0, y); return; }
     if (e.target.id === 'cat-filter') { S.filter.cat = e.target.value; renderList(); return; }
     // 체크박스: 한 줄 / 그날 전체 / 보이는 내역 전체
     const t = e.target;
@@ -2426,7 +2393,7 @@ function bind() {
     const pick = (sel, key, after) => {
       const b = e.target.closest(`${sel} button`);
       if (!b) return false;
-      form[key] = b.dataset.v; after?.(); setPressed($(sel), form[key]); updateBudgetHint(); return true;
+      form[key] = b.dataset.v; after?.(); setPressed($(sel), form[key]); updateTxSummary(); updateBudgetHint(); return true;
     };
     if (pick('#tx-owner', 'owner')) return;
     if (pick('#tx-type', 'type', () => {
@@ -2449,8 +2416,29 @@ function bind() {
     inp.focus();
     inp.setSelectionRange(inp.value.length, inp.value.length);
   });
-  $('#tx-date').addEventListener('change', updateBudgetHint);
+  $('#tx-date').addEventListener('change', () => { updateTxSummary(); updateBudgetHint(); });
+  $('#tx-more-btn').addEventListener('click', () => setTxMore($('#tx-more').hidden));
+  $('#tx-date-chips').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-d]');
+    if (!b) return;
+    $('#tx-date').value = isoDaysAgo(-Number(b.dataset.d));
+    $('#tx-date').dispatchEvent(new Event('change'));
+  });
+  $('#tx-recent').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-memo]');
+    if (b) applyMemo(b.dataset.memo);
+  });
+  $('#view-dashboard').addEventListener('toggle', (e) => {
+    if (e.target.matches?.('details.analysis')) local.set('analysisOpen', e.target.open ? '1' : '0');
+  }, true);
   $('#view-dashboard').addEventListener('click', (e) => {
+    const jump = e.target.closest('[data-jump-cat]');
+    if (jump) {
+      S.openCats.add(jump.dataset.jumpCat);
+      renderDashboard();
+      $(`#budget-card [data-cat="${CSS.escape(jump.dataset.jumpCat)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     const edit = e.target.closest('[data-edit-tx]');
     if (edit) { openTx(S.tx.find((t) => t.id === edit.dataset.editTx)); return; }
     if (e.target.closest('[data-three-more]')) {

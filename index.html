@@ -9,9 +9,9 @@
   <link rel="icon" type="image/png" href="img/wasabi-head.png">
   <link rel="apple-touch-icon" href="img/wasabi-head.png">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="css/style.css?v=20261109a">
+  <link rel="stylesheet" href="css/style.css?v=20261110a">
   <script src="js/vendor/chart-4.4.1.umd.js"></script>
-  <script type="module" src="js/app.js?v=20261109a"></script>
+  <script type="module" src="js/app.js?v=20261110a"></script>
 </head>
 <body>
   <!-- 아이콘: 한 가지 선 굵기(1.8)로 직접 그린 SVG -->
@@ -38,6 +38,7 @@
         <span class="mode-badge" id="mode-badge" hidden>데모 모드</span>
       </div>
       <button type="button" class="share-top" id="share-top" data-share-goals hidden aria-label="이 달 지출목표 공유 문구"><svg class="ico" aria-hidden="true"><use href="#i-share"/></svg><span>공유</span></button>
+      <button type="button" class="add-top" id="add-top" hidden><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span>내역 입력</span></button>
       <div class="seg who-seg" id="who-seg" role="tablist" aria-label="보는 사람"></div>
       <div class="month-nav" aria-label="월 선택">
         <button class="icon-btn" id="prev-month" aria-label="이전 달"><svg class="ico" aria-hidden="true"><use href="#i-left"/></svg></button>
@@ -81,25 +82,14 @@
         <h2 id="tx-title">내역 입력</h2>
         <button type="button" class="icon-btn" data-close aria-label="닫기"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>
       </div>
-      <div class="field">
-        <span class="label">누구</span>
-        <div class="seg" id="tx-owner"></div>
-      </div>
-      <div class="field">
-        <span class="label">구분</span>
-        <div class="seg" id="tx-type">
-          <button type="button" data-v="variable">소비지출</button>
-          <button type="button" data-v="fixed">고정비용</button>
-          <button type="button" data-v="income">수입</button>
-        </div>
-      </div>
-      <div class="row2">
-        <label class="field"><span class="label">날짜</span><input type="date" id="tx-date" required></label>
-        <div class="field"><label class="label" for="tx-amount">금액 (원)</label>
-          <div class="amount-box"><input type="text" id="tx-amount" inputmode="numeric" autocomplete="off" placeholder="0" required aria-describedby="tx-calc">
-            <button type="button" class="calc-plus" id="tx-plus" aria-label="금액 더하기 (+ 넣기)"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
-          <span class="calc-result" id="tx-calc" aria-live="polite" hidden></span></div>
-      </div>
+      <div class="field"><label class="label" for="tx-amount">금액 (원)</label>
+        <div class="amount-box"><input type="text" id="tx-amount" inputmode="numeric" autocomplete="off" placeholder="0" required aria-describedby="tx-calc">
+          <button type="button" class="calc-plus" id="tx-plus" aria-label="금액 더하기 (+ 넣기)"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
+        <span class="calc-result" id="tx-calc" aria-live="polite" hidden></span></div>
+      <div class="field"><label class="label" for="tx-memo">가게·메모</label>
+        <input type="text" id="tx-memo" list="memo-list" autocomplete="off" placeholder="예: 이마트 장보기">
+        <datalist id="memo-list"></datalist>
+        <div class="recent-chips" id="tx-recent" aria-label="최근 가게 (누르면 분류·결제 수단까지 채움)"></div></div>
       <div class="field">
         <span class="label">분류</span>
         <div class="chips" id="tx-category"></div>
@@ -109,12 +99,32 @@
         </div>
         <p class="hint budget-hint" id="tx-budget" hidden></p>
       </div>
-      <div class="field" id="tx-method-field">
-        <span class="label">결제 수단</span>
-        <div class="chips" id="tx-method"></div>
+      <!-- 누구·구분·날짜·결제 수단은 대부분 지난번 그대로라 한 줄로 접어 둔다 -->
+      <button type="button" class="tx-summary" id="tx-more-btn" aria-expanded="false" aria-controls="tx-more">
+        <span id="tx-summary-text"></span><span class="tx-summary-edit">바꾸기</span></button>
+      <div class="tx-more" id="tx-more" hidden>
+        <div class="field">
+          <span class="label">누구</span>
+          <div class="seg" id="tx-owner"></div>
+        </div>
+        <div class="field">
+          <span class="label">구분</span>
+          <div class="seg" id="tx-type">
+            <button type="button" data-v="variable">소비지출</button>
+            <button type="button" data-v="fixed">고정비용</button>
+            <button type="button" data-v="income">수입</button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="label" for="tx-date">날짜</label>
+          <div class="date-row"><div class="chips" id="tx-date-chips"><button type="button" data-d="0">오늘</button><button type="button" data-d="-1">어제</button></div>
+            <input type="date" id="tx-date" required></div>
+        </div>
+        <div class="field" id="tx-method-field">
+          <span class="label">결제 수단</span>
+          <div class="chips" id="tx-method"></div>
+        </div>
       </div>
-      <label class="field"><span class="label">메모</span><input type="text" id="tx-memo" list="memo-list" autocomplete="off" placeholder="예: 이마트 장보기"></label>
-      <datalist id="memo-list"></datalist>
       <div class="suggest-box" id="tx-hint" role="status" hidden></div>
       <p class="error" id="tx-error" hidden></p>
       <div class="sheet-actions">
