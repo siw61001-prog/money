@@ -1,5 +1,5 @@
-import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261110a';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261110a';
+import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261114a';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261114a';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -774,7 +774,7 @@ function renderList() {
       </div>
       <div class="toolbar" style="margin-top:12px">
         <button type="button" class="btn small primary" id="open-upload">엑셀 일괄 등록</button>
-        ${canCopyFixed ? `<button type="button" class="btn small" id="copy-fixed">${Number(prevYM.slice(5))}월 고정비용을 ${Number(S.ym.slice(5))}월로 복사</button>` : ''}
+        ${canCopyFixed ? `<button type="button" class="btn small" id="copy-fixed">${Number(prevYM.slice(5))}월 고정비용을 ${Number(S.ym.slice(5))}월로 복사${monthProgress(S.ym).current ? ` (오늘 ${Number(today().slice(8))}일까지)` : ''}</button>` : ''}
         <span class="hint">${canCopyFixed ? '구독료·보험·저축처럼 매달 같은 항목은 복사로 한 번에 넣을 수 있어요.' : '양식에 여러 건을 적어 한 번에 올릴 수 있어요.'}</span>
       </div>
     </div>
@@ -913,13 +913,17 @@ async function copyFixedFromPrev() {
   const existing = new Set(inMonth(scopedTx(), S.ym).filter((t) => t.type === 'fixed').map((t) => `${t.category}|${t.memo}`));
   const [y, m] = S.ym.split('-').map(Number);
   const last = new Date(y, m, 0).getDate();
-  const add = prev.filter((t) => !existing.has(`${t.category}|${t.memo}`)).map((t) => ({
+  const todayIso = today();
+  const all = prev.filter((t) => !existing.has(`${t.category}|${t.memo}`)).map((t) => ({
     owner: t.owner, type: 'fixed', category: t.category, method: t.method || '', memo: t.memo || '', amount: t.amount,
     date: `${S.ym}-${String(Math.min(Number(t.date.slice(8)), last)).padStart(2, '0')}`,
   }));
-  if (!add.length) { toast('이미 모두 복사되어 있습니다'); return; }
+  // 아직 오지 않은 날짜의 고정비용은 넣지 않는다 (오늘까지 나간 것만). 지난 달은 전부.
+  const add = all.filter((t) => t.date <= todayIso);
+  const later = all.length - add.length;
+  if (!add.length) { toast(later ? `오늘까지 나간 건 이미 들어 있어요 · 남은 ${later}건은 그날이 지나면 다시 눌러 주세요` : '이미 모두 복사되어 있습니다'); return; }
   await S.store.bulk({ addTx: add });
-  toast(`고정비용 ${add.length}건을 추가했습니다`);
+  toast(`고정비용 ${add.length}건을 추가했습니다${later ? ` · 아직 날짜가 안 된 ${later}건은 뺐어요` : ''}`);
 }
 
 /* ---------- 자산 ---------- */
@@ -1962,8 +1966,7 @@ const isoDaysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); re
 // 접어 둔 누구·구분·날짜·결제 수단을 한 줄로 보여준다
 function updateTxSummary() {
   const date = $('#tx-date').value;
-  const dLabel = date === isoDaysAgo(0) ? '오늘' : date === isoDaysAgo(1) ? '어제' : date ? `${Number(date.slice(5, 7))}월 ${Number(date.slice(8))}일` : '날짜?';
-  $('#tx-summary-text').textContent = [form.owner || '누구?', TYPE_LABEL[form.type], dLabel, form.type === 'income' ? '' : form.method].filter(Boolean).join(' · ');
+  $('#tx-summary-text').textContent = [form.owner || '누구?', form.type === 'income' ? '' : form.method].filter(Boolean).join(' · ');
   $$('#tx-date-chips button').forEach((b) => b.setAttribute('aria-pressed', String(isoDaysAgo(-Number(b.dataset.d)) === date)));
 }
 function setTxMore(open) {
@@ -2064,7 +2067,8 @@ function openTx(tx) {
   $('#tx-hint').hidden = true;
   form.id = t?.id || null;
   form.owner = t?.owner || (S.who !== 'all' ? S.who : local.get('lastOwner', ''));
-  form.type = t?.type || local.get('lastType', 'variable');
+  const listType = S.view === 'list' && S.filter.type !== 'all' ? S.filter.type : '';
+  form.type = t?.type || listType || local.get('lastType', 'variable');
   form.category = t?.category || '';
   form.sub = t?.sub || '';
   form.subTouched = !!t?.sub;
@@ -2092,7 +2096,7 @@ async function saveTx(keepOpen) {
     : !date ? '날짜를 입력하세요.'
     : !amount ? '금액을 입력하세요.'
     : !form.category ? '분류를 선택하세요.' : '';
-  if (problem) { err.textContent = problem; err.hidden = false; if (!form.owner || !date) setTxMore(true); return; }
+  if (problem) { err.textContent = problem; err.hidden = false; if (!form.owner) setTxMore(true); return; }
   const memo = $('#tx-memo').value.trim();
   const hasSub = form.type === 'variable' && subList(form.category).length > 0;
   const data = {
