@@ -1,5 +1,5 @@
-import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261114b';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261114b';
+import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261114c';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261114c';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -623,6 +623,7 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
   const extra = cats.filter(([c]) => !budgets[c] && !(c.includes('|') && budgets[c.split('|')[0]]));
   return `<article class="card span-6" id="budget-card">
     <div class="card-head"><h2>${monthNo}월 예산 <small class="muted-tag">통합</small></h2><a class="sub" href="#settings" data-goto-budget>예산 수정</a></div>
+    <div class="budget-head" aria-hidden="true"><span></span><span>잔여예산</span></div>
     <div class="bars budget-rows">${rows.map((r) => {
       const st = budgetState(r.spent, r.budget, prog.elapsed);
       const left = r.budget - r.spent;
@@ -631,13 +632,13 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
           <span class="b-budget">예산 ${shortWon(r.budget)}</span></span>
         <span class="bar-track"><span class="${st}" style="width:${Math.min(100, (r.spent / r.budget) * 100)}%"></span>
           ${prog.current ? `<i class="pace" style="left:${prog.elapsed * 100}%"></i>` : ''}</span>
-        <span class="b-left ${st}"><small>${left < 0 ? '초과' : st === 'warn' ? '주의 · 남음' : '남음'}</small><b>${shortWon(Math.abs(left))}</b>${countBadge(r.c)}</span>`, monthTx);
+        <span class="b-left ${st}">${left < 0 ? '<small>초과</small>' : st === 'warn' ? '<small>주의</small>' : ''}<b>${won(Math.abs(left))}</b>${countBadge(r.c)}</span>`, monthTx);
     }).join('')}</div>
     ${extra.length ? `<h3 class="sub-head">예산 없는 분류</h3>
     <div class="bars budget-rows">${extra.map(([c, v]) => catItem(c, `<span class="b-top"><span class="name">${esc(unitLabel(c))}</span>
           <span class="b-spent">${fmt(v.sum)}원</span></span>
         <span class="bar-track"><span style="width:${(v.sum / catMax) * 100}%;background:var(--muted);opacity:.45"></span></span>
-        <span class="b-left"><small>건수</small><b>${v.n}건</b></span>`, monthTx)).join('')}</div>` : ''}
+        <span class="b-left"><b>${v.n}건</b></span>`, monthTx)).join('')}</div>` : ''}
     ${tip}
   </article>`;
 }
