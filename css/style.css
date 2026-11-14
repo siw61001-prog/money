@@ -330,7 +330,7 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 .pill.ok { background: #E7F0DE; } .pill.warn { background: #F7ECD9; } .pill.over { background: #F8E4E0; }
 .budget-rows { gap: var(--s3); }
 /* 예산 줄: 윗줄 분류·쓴 금액 …… 예산 / 아랫줄 막대 / 맨 오른쪽 칸 남음 */
-.budget-rows .bar-row { grid-template-columns: minmax(0, 1fr) 76px; grid-template-areas: "top left" "track left"; row-gap: 6px; column-gap: var(--s4); }
+.budget-rows .bar-row { grid-template-columns: minmax(0, 1fr) 104px; grid-template-areas: "top left" "track left"; row-gap: 6px; column-gap: var(--s4); }
 .budget-rows .b-top { grid-area: top; display: flex; align-items: baseline; gap: 4px var(--s2); min-width: 0; }
 .budget-rows .b-top .name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--t-sm); }
 .budget-rows .b-spent { font-weight: 700; white-space: nowrap; }
@@ -339,7 +339,7 @@ dialog.sheet form { display: grid; gap: 14px; padding: 18px 20px 20px; }
 .budget-rows .bar-row .bar-track { grid-area: track; }
 .budget-rows .b-left { grid-area: left; align-self: center; display: grid; justify-items: end; line-height: 1.25; padding-left: var(--s3); border-left: 1px solid var(--line); }
 .budget-rows .b-left small { font-size: var(--t-xs); color: var(--muted); font-weight: 600; white-space: nowrap; }
-.budget-rows .b-left b { font-size: var(--t-md); font-weight: 700; white-space: nowrap; color: var(--ink); }
+.budget-rows .b-left b { font-size: var(--t-md); font-weight: 700; white-space: nowrap; color: var(--ink); letter-spacing: -.01em; }
 .budget-rows .b-left.ok b { color: var(--saving); }
 .budget-rows .b-left.warn small, .budget-rows .b-left.warn b { color: var(--warn); }
 .budget-rows .b-left.over small, .budget-rows .b-left.over b { color: var(--expense); }
@@ -526,7 +526,8 @@ input[type="file"]::file-selector-button:hover { background: var(--surface-2); }
   .kpi.hero .k-value { font-size: 24px; }
   .status-summary { grid-template-columns: 1fr 1fr; gap: var(--s4); }
   .status-summary strong { font-size: 18px; }
-  .budget-rows .bar-row { grid-template-columns: minmax(0, 1fr) 78px; column-gap: var(--s3); }
+  .budget-rows .bar-row { grid-template-columns: minmax(0, 1fr) 92px; column-gap: var(--s3); }
+  .budget-rows .b-left b { font-size: 14px; }
   .budget-rows .b-left { padding-left: 10px; }
   .cat-toggle { min-height: 36px; }
   dialog.sheet { width: 100vw; max-width: 100vw; margin: auto 0 0; border-radius: 18px 18px 0 0; max-height: 92dvh; }
@@ -666,3 +667,8 @@ textarea.input { width: 100%; resize: vertical; line-height: 1.55; font-size: 14
 
 /* 좁은 휴대폰: 예산 줄의 하위 분류는 '식비 · ' 없이 '배달음식'만 */
 @media (max-width: 420px) { .budget-rows .name .pfx { display: none; } }
+
+/* 예산 줄 위 열 제목: 오른쪽 칸이 무엇인지 한 번만 */
+.budget-head { display: grid; grid-template-columns: minmax(0, 1fr) 104px; column-gap: var(--s4); margin: -4px 0 6px; }
+.budget-head span:last-child { text-align: right; font-size: var(--t-xs); font-weight: 600; color: var(--muted); }
+@media (max-width: 720px) { .budget-head { grid-template-columns: minmax(0, 1fr) 92px; column-gap: var(--s3); } }
