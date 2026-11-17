@@ -106,6 +106,18 @@ button.small { font-size: 13px; padding: 3px 10px; }
 .item-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .empty { border: 1px dashed var(--line); border-radius: 14px; padding: 28px; text-align: center; color: var(--ink-soft); }
 
+.concept-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.concept-tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.concept { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px 24px; }
+@media (max-width: 700px) { .concept { grid-template-columns: 1fr; } }
+.concept .why { font-size: 14px; color: var(--ink-soft); }
+.concept-items { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 12px; font-size: 14px; }
+.concept-items label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.concept-items input { accent-color: var(--accent); }
+.concept-items input:checked + span { text-decoration: line-through; color: var(--ink-soft); }
+.palette { display: flex; flex-wrap: wrap; gap: 8px; }
+.palette div { display: grid; justify-items: center; gap: 2px; font-size: 11px; color: var(--ink-soft); }
+.palette i { width: 40px; height: 28px; border-radius: 40% 55% 45% 50% / 55% 45% 55% 45%; display: block; background: var(--c); }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); background: var(--ink); color: var(--paper); padding: 8px 16px; border-radius: 999px; font-size: 14px; z-index: 20; max-width: calc(100% - 32px); }
 @media (prefers-reduced-motion: no-preference) { .toast { transition: opacity .2s; } }
 </style>
@@ -118,6 +130,15 @@ button.small { font-size: 13px; padding: 3px 10px; }
     </div>
     <p class="soft" style="max-width:52ch">한 장에 여러 소품을 그려 올리면 배경을 지우고 소품별로 잘라서 미리캔버스용 PNG로 뽑아줘요.</p>
   </header>
+
+  <section class="panel" aria-label="그릴 거리">
+    <div class="toolbar">
+      <h2>오늘 그릴 거리</h2>
+      <span class="hint">미리캔버스 검색어 697개 분석 · 찾는 사람은 많은데 손그림은 드문 주제</span>
+    </div>
+    <div class="concept-tabs" id="conceptTabs" role="tablist"></div>
+    <div class="concept" id="concept"></div>
+  </section>
 
   <div class="layout">
     <aside class="panel side" aria-label="설정">
@@ -800,6 +821,73 @@ button.small { font-size: 13px; padding: 3px 10px; }
     }
     return c;
   }
+
+  // ---------- concepts (from research/report.json) ----------
+  const CONCEPTS = [
+    { key: "winter", label: "겨울 간식", set: "겨울간식", when: "지금 바로 · 2월까지", why: "\"겨울\" 74위, 손그림 15%. 상위는 파란 눈 풍경·눈사람 위주라 따뜻한 색 간식·소품이 비어 있어요.",
+      items: ["붕어빵 두 마리", "군고구마 종이봉투", "호빵", "귤 바구니", "코코아 머그와 마시멜로", "벙어리장갑 한 쌍", "방울 털모자", "줄무늬 목도리", "털실 뭉치와 뜨개바늘", "김 나는 찻주전자", "눈 결정 3종", "작은 장작 난로"],
+      palette: [["코코아", "#c9a089"], ["크림", "#f3e3c3"], ["귤", "#f5b47a"], ["딸기우유", "#f2b8c6"], ["겨울하늘", "#b9d3e8"]] },
+    { key: "seollal", label: "설날 소품", set: "설날소품", when: "12월 중순까지 올리기", why: "\"한복\" 75위인데 손그림 2%. 한복 입은 아이 캐릭터가 거의 전부라 사물만 그린 세트가 비어 있어요.",
+      items: ["복주머니", "떡국 한 그릇", "윷 네 개와 말", "방패연과 얼레", "옷걸이에 걸린 색동저고리", "꽃신 한 켤레", "무늬만 있는 세뱃돈 봉투", "매화 가지", "까치", "소나무 가지", "곶감 꼬치", "약과와 한과 접시"],
+      palette: [["연분홍", "#f4b6b8"], ["연두", "#c9dfa6"], ["하늘", "#b8d6ee"], ["개나리", "#f7d88b"], ["팥", "#c98f8a"]] },
+    { key: "ppt", label: "PPT 포인트", set: "PPT포인트", when: "언제든 · 1년 내내", why: "\"화살표-아이콘\" 9위인데 손그림 3%. 아이콘 검색 상위는 전부 검정 도형이에요. 색을 맞춘 세트가 드물어요.",
+      items: ["곧은 화살표", "휘어진 화살표", "U턴 화살표", "동그라미 강조 낙서", "직선 밑줄", "물결 밑줄", "체크 표시", "엑스 표시", "반짝이 별 셋", "형광펜 칠 띠", "빈 말풍선", "짧은 집중선"],
+      palette: [["하늘", "#a9cbea"], ["버터", "#f6de8d"], ["코랄", "#f2a99a"], ["민트", "#a8d8c4"], ["라벤더", "#c7b8e6"]] },
+    { key: "sports", label: "운동회 도구", set: "운동회도구", when: "3월까지 올리기", why: "\"운동회\" 61위, 손그림 5%. 응원하는 아이 캐릭터와 가랜드 위주라 도구만 모은 세트가 비어 있어요.",
+      items: ["박 터뜨리기 박", "콩주머니 세 개", "청·홍 머리띠", "이어달리기 바통", "응원 폼폼 한 쌍", "줄다리기 밧줄", "리본 달린 메달", "호루라기", "결승선 테이프", "만국기 가랜드", "공굴리기 큰 공", "확성기"],
+      palette: [["홍", "#f2a1a1"], ["청", "#9dbbe6"], ["노랑", "#f6d77f"], ["잔디", "#b9db9e"], ["연보라", "#cdb9e8"]] },
+    { key: "jobs", label: "직업 도구", set: "직업도구", when: "언제든 · 진로교육", why: "\"간호사\" 37위, 손그림 17%. 직업 검색은 유니폼 입은 사람 그림이 거의 전부라 도구 세트가 비어 있어요.",
+      items: ["청진기", "구급상자", "소방 헬멧과 호스", "경찰 모자", "요리사 모자와 국자", "분필과 칠판지우개", "붓과 팔레트", "렌치와 드라이버", "우편 가방과 편지", "조종사 모자", "제빵사 밀대", "모종삽과 화분"],
+      palette: [["민트", "#a6d9cf"], ["하늘", "#afcbea"], ["살구", "#f5c1a0"], ["버터", "#f4dc94"], ["회청", "#b5bfcc"]] },
+  ];
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+  };
+  let conceptKey = store.get("dl.concept", "winter");
+  function renderConcept() {
+    const tabs = $("#conceptTabs"); tabs.replaceChildren();
+    CONCEPTS.forEach((c, i) => {
+      const b = document.createElement("button");
+      b.setAttribute("role", "tab"); b.setAttribute("aria-selected", String(c.key === conceptKey));
+      b.textContent = (i + 1) + ". " + c.label + (i === 0 ? " (추천)" : "");
+      b.addEventListener("click", () => selectConcept(c.key));
+      tabs.append(b);
+    });
+    const c = CONCEPTS.find((x) => x.key === conceptKey) || CONCEPTS[0];
+    const done = store.get("dl.done." + c.key, []);
+    const box = $("#concept"); box.replaceChildren();
+    const left = document.createElement("div"); left.style.cssText = "display:grid;gap:8px;min-width:0";
+    const t = document.createElement("p"); t.innerHTML = "<b></b> <span class=\"chip\"></span>";
+    t.querySelector("b").textContent = "그릴 것 " + c.items.length + "개"; t.querySelector(".chip").textContent = c.when;
+    const ul = document.createElement("ul"); ul.className = "concept-items";
+    c.items.forEach((name, i) => {
+      const li = document.createElement("li"), lb = document.createElement("label"), cb = document.createElement("input"), sp = document.createElement("span");
+      cb.type = "checkbox"; cb.id = "ci-" + c.key + "-" + i; cb.checked = done.includes(i); sp.textContent = name;
+      cb.addEventListener("change", () => {
+        const cur = new Set(store.get("dl.done." + c.key, []));
+        cb.checked ? cur.add(i) : cur.delete(i); store.set("dl.done." + c.key, [...cur]);
+      });
+      lb.append(cb, sp); li.append(lb); ul.append(li);
+    });
+    left.append(t, ul);
+    const right = document.createElement("div"); right.style.cssText = "display:grid;gap:10px;align-content:start;min-width:0";
+    const why = document.createElement("p"); why.className = "why"; why.textContent = c.why;
+    const pal = document.createElement("div"); pal.className = "palette";
+    c.palette.forEach(([n, hex]) => { const d = document.createElement("div"), i = document.createElement("i"); i.style.setProperty("--c", hex); d.append(i, n); pal.append(d); });
+    const rule = document.createElement("p"); rule.className = "hint"; rule.textContent = "사람 없이 사물만 · 검은 외곽선 없이 · 글자 없이 · 이 팔레트 안에서만 칠하기";
+    right.append(why, pal, rule);
+    box.append(left, right);
+  }
+  function selectConcept(key) {
+    conceptKey = key; store.set("dl.concept", key);
+    const c = CONCEPTS.find((x) => x.key === key);
+    const setEl = $("#set");
+    setEl.value = c.set; setEl.dispatchEvent(new Event("input"));
+    renderConcept();
+  }
+  { const c0 = CONCEPTS.find((x) => x.key === conceptKey) || CONCEPTS[0]; S.set = c0.set; $("#set").value = c0.set; }
+  renderConcept();
 
   sources.push(makeSource(makeExample(), "예시 · 겨울간식 낙서", true));
   processAll();
