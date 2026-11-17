@@ -7,7 +7,8 @@
 - creators  : 서로 다른 작가 수
 - opportunity = demand × (1 - hand) × (0.5 + 0.5 × getty)
 
-사용법: python3 analyze.py  → data/report.json, 콘솔 요약
+사용법: python3 analyze.py  → report.json (통계만, 작가명 없음), 콘솔 요약
+원본(data/)은 분석 후 삭제한다.
 """
 import json, re
 from collections import Counter
@@ -65,14 +66,16 @@ def main():
     out = {
         "keywords_analyzed": len(report),
         "style_keywords": style_counter.most_common(20),
-        "top_hand_creators": hand_creators.most_common(15),
+        # 작가 이름은 남기지 않고 규모만 기록
+        "hand_creator_count": len(hand_creators),
+        "hand_top10_share": round(sum(c for _, c in hand_creators.most_common(10)) / max(1, sum(hand_creators.values())), 3),
         "avg_hand_share": round(sum(x["hand"] for x in report) / len(report), 3),
         "ranking": report,
     }
-    (DATA / "report.json").write_text(json.dumps(out, ensure_ascii=False, indent=1))
+    (Path(__file__).parent / "report.json").write_text(json.dumps(out, ensure_ascii=False, indent=1))
     print("분석 키워드:", len(report), "| 평균 손그림 비율:", out["avg_hand_share"])
     print("손그림 스타일 태그:", out["style_keywords"][:12])
-    print("손그림 상위 작가:", out["top_hand_creators"][:10])
+    print("손그림 작가 수:", out["hand_creator_count"], "| 상위10명 점유:", out["hand_top10_share"])
     print("\n기회 상위 40")
     for x in report[:40]:
         print(f'{x["rank"]:>4} {x["keyword"]:<14} opp={x["opportunity"]:.2f} hand={x["hand"]:.2f} '
