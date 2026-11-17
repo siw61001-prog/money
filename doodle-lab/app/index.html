@@ -113,8 +113,13 @@ button.small { font-size: 13px; padding: 3px 10px; }
 .concept .why { font-size: 14px; color: var(--ink-soft); max-width: 60ch; }
 .drafts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
 .drafts li { display: grid; gap: 4px; font-size: 13px; }
-.drafts .draft-img { aspect-ratio: 1 / 1; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-soft); font-size: 12px; overflow: hidden; }
-.drafts .draft-img img { width: 100%; height: 100%; display: block; }
+.drafts .draft-img { aspect-ratio: 1 / 1; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-soft); font-size: 12px; overflow: hidden; padding: 0; position: relative; width: 100%; }
+.drafts .draft-img[aria-pressed="true"] { border: 2px solid var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.pick-badge { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 13px; }
+.draft-row { display: flex; gap: 4px; align-items: center; justify-content: space-between; }
+.draft-row label { min-width: 0; }
+.redo { padding: 0 8px; font-size: 14px; line-height: 22px; flex: none; }
+.drafts .draft-img img { width: 100%; height: 100%; display: block; pointer-events: none; }
 .drafts label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
 .drafts input { accent-color: var(--accent); }
 .drafts li.done .draft-img { opacity: .4; }
@@ -921,23 +926,55 @@ button.small { font-size: 13px; padding: 3px 10px; }
     draftBusy = false; renderConcept();
   }
 
-  async function saveSheet(c) {
-    const drafts = draftsFor(c);
-    if (!drafts) return;
-    const cell = 800, cols = 3, rows = Math.ceil(c.items.length / cols);
+  // 개별 초안: AI로 하나만 다시 그린 것이 있으면 그것을 먼저 쓴다
+  const draftAt = (c, i) => store.get("dl.draft1." + c.key + "." + i, null) || (draftsFor(c) || [])[i] || null;
+  const pickKey = (c) => "dl.pick." + c.key;
+  let oneBusy = null;
+
+  async function aiDraftOne(c, i) {
+    if (!sample || oneBusy) return;
+    oneBusy = c.key + i; renderConcept();
+    try {
+      const prompt =
+        "귀여운 파스텔 색연필 일러스트를 그리기 전에 참고할 밑그림(초안)을 SVG로 그려 줘.\n" +
+        "소품: " + c.items[i] + " (세트 주제: " + c.label + ")\n" +
+        "규칙: viewBox 0 0 200 200 안에 들어갈 SVG 내용만 (바깥 <svg> 태그 없이). path, circle, ellipse, rect, polygon, line, g 만 사용. " +
+        "텍스트·이미지·그라데이션·필터 없음. 검은 외곽선 없이 색면 위주, 디테일은 같은 계열의 조금 진한 색 선으로. " +
+        "색은 이 팔레트 안에서: " + c.palette.map((p) => p[1]).join(", ") + ". 사람·얼굴·글자 없음. 단순하게, 가장자리 여백 15 이상.\n" +
+        "답은 JSON만: {\"svg\": \"...\"}";
+      const res = await sample.json(prompt, { modelTier: "default", cache: false });
+      const svg = cleanSvg(res && res.svg);
+      if (!svg) throw { code: "invalid_json" };
+      store.set("dl.draft1." + c.key + "." + i, svg);
+      toast(c.items[i] + " 초안을 다시 그렸어요");
+    } catch (e) {
+      const code = e && e.code;
+      toast(code === "not_granted" ? "AI 사용을 허용하지 않아서 멈췄어요" : code === "rate_limited" ? "요청이 많아요. 잠시 뒤에 다시 눌러주세요" : "초안을 그리지 못했어요 (" + code + ")");
+    }
+    oneBusy = null; renderConcept();
+  }
+
+  async function saveSheet(c, indices) {
+    const list = indices.filter((i) => draftAt(c, i));
+    if (!list.length) return;
+    const n = list.length;
+    const cols = n === 1 ? 1 : n <= 4 ? 2 : 3, cell = n === 1 ? 2000 : n <= 4 ? 1200 : 800;
+    const rows = Math.ceil(n / cols);
     const cv = document.createElement("canvas"); cv.width = cell * cols; cv.height = cell * rows;
     const ctx = cv.getContext("2d");
     ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, cv.width, cv.height);
-    for (let i = 0; i < c.items.length; i++) {
-      if (!drafts[i]) continue;
-      const x = (i % cols) * cell, y = Math.floor(i / cols) * cell;
+    const m = Math.round(cell * 0.11);
+    for (let k = 0; k < n; k++) {
+      const i = list[k], x = (k % cols) * cell, y = Math.floor(k / cols) * cell;
       try {
-        const im = await loadImgUrl(svgUrl(drafts[i]));
-        ctx.globalAlpha = 0.4; ctx.drawImage(im, x + 90, y + 90, cell - 180, cell - 180); ctx.globalAlpha = 1;
+        const im = await loadImgUrl(svgUrl(draftAt(c, i)));
+        ctx.globalAlpha = 0.4; ctx.drawImage(im, x + m, y + m, cell - 2 * m, cell - 2 * m); ctx.globalAlpha = 1;
       } catch { /* skip broken draft */ }
-      ctx.fillStyle = "#b8b0a6"; ctx.font = "28px system-ui, sans-serif"; ctx.fillText((i + 1) + ". " + c.items[i], x + 30, y + 50);
+      ctx.fillStyle = "#b8b0a6"; ctx.font = Math.round(cell / 28) + "px system-ui, sans-serif";
+      ctx.fillText((i + 1) + ". " + c.items[i], x + cell * 0.04, y + cell * 0.06);
     }
-    await saveBlob(c.set + "_밑그림.png", await toBlob(cv, "image/png"));
+    const suffix = n === c.items.length ? "전체" : n === 1 ? c.items[list[0]] : n + "개";
+    await saveBlob(c.set + "_밑그림_" + suffix.replace(/[\\/:*?"<>|]/g, "_") + ".png", await toBlob(cv, "image/png"));
   }
 
   function renderConcept() {
@@ -951,7 +988,8 @@ button.small { font-size: 13px; padding: 3px 10px; }
     });
     const c = CONCEPTS.find((x) => x.key === conceptKey) || CONCEPTS[0];
     const done = store.get("dl.done." + c.key, []);
-    const drafts = draftsFor(c);
+    const picked = new Set(store.get(pickKey(c), []));
+    const hasAny = c.items.some((_, i) => draftAt(c, i));
     const box = $("#concept"); box.replaceChildren();
 
     const head = document.createElement("div"); head.className = "concept-head";
@@ -961,38 +999,65 @@ button.small { font-size: 13px; padding: 3px 10px; }
     head.append(why, pal);
 
     const acts = document.createElement("div"); acts.className = "item-actions";
-    if (drafts) {
-      const sheet = document.createElement("button"); sheet.className = "primary"; sheet.textContent = "밑그림 시트 저장 (12개 한 장)";
-      sheet.addEventListener("click", () => saveSheet(c));
-      acts.append(sheet);
+    if (hasAny) {
+      const pick = document.createElement("button"); pick.className = "primary";
+      pick.textContent = picked.size ? "고른 " + picked.size + "개 밑그림 저장" : "초안을 눌러서 고르세요";
+      pick.disabled = !picked.size;
+      pick.addEventListener("click", () => saveSheet(c, [...picked].sort((a, b) => a - b)));
+      const all = document.createElement("button"); all.textContent = "전체 " + c.items.length + "개 밑그림 저장";
+      all.addEventListener("click", () => saveSheet(c, c.items.map((_, i) => i)));
+      const clr = document.createElement("button"); clr.textContent = "고른 것 해제"; clr.disabled = !picked.size;
+      clr.addEventListener("click", () => { store.set(pickKey(c), []); renderConcept(); });
+      acts.append(pick, all, clr);
     }
     if (!c.drafts || !c.drafts.handmade) {
       const ai = document.createElement("button");
-      ai.textContent = draftBusy ? "AI가 초안 그리는 중… (1분쯤)" : drafts ? "AI로 초안 다시 그리기" : "AI로 초안 그리기";
-      ai.disabled = draftBusy || !sample;
+      ai.textContent = draftBusy ? "AI가 초안 그리는 중… (1분쯤)" : draftsFor(c) ? "AI로 전체 다시 그리기" : "AI로 초안 12개 그리기";
+      ai.disabled = draftBusy || !!oneBusy || !sample;
       ai.addEventListener("click", () => aiDrafts(c));
       acts.append(ai);
     }
     const tip = document.createElement("p"); tip.className = "hint";
-    tip.textContent = drafts
-      ? "시트를 그림 앱에 밑그림 레이어로 깔고 위 레이어에 그린 뒤, 밑그림을 끄고 내보내서 아래에 올리면 소품별로 잘려요. 초안은 참고용이니 모양은 자유롭게 바꾸세요."
+    tip.textContent = hasAny
+      ? "그리고 싶은 초안을 눌러 고른 뒤 저장하면 그것만 한 장에 연하게 깔려요(1개면 2000px 한 장). 그림 앱에서 밑그림 레이어로 깔고 위에 그린 다음, 밑그림을 끄고 내보내서 아래에 올리세요."
       : sample ? "버튼을 누르면 AI가 소품 12개의 밑그림을 그려요. 내 Claude 사용량을 써요." : "AI 초안은 claude.ai에서 열었을 때만 그릴 수 있어요.";
 
     const grid = document.createElement("ul"); grid.className = "drafts";
     c.items.forEach((name, i) => {
       const li = document.createElement("li");
-      const fig = document.createElement("div"); fig.className = "draft-img";
-      if (drafts && drafts[i]) { const im = document.createElement("img"); im.src = svgUrl(drafts[i]); im.alt = name + " 초안"; fig.append(im); }
-      else { fig.textContent = "초안 없음"; }
+      const svg = draftAt(c, i);
+      const fig = document.createElement("button"); fig.type = "button"; fig.className = "draft-img";
+      fig.setAttribute("aria-pressed", String(picked.has(i)));
+      fig.setAttribute("aria-label", name + " 초안 고르기");
+      if (oneBusy === c.key + i) fig.append("다시 그리는 중…");
+      else if (svg) { const im = document.createElement("img"); im.src = svgUrl(svg); im.alt = ""; fig.append(im); }
+      else fig.append("초안 없음");
+      if (picked.has(i)) { const badge = document.createElement("span"); badge.className = "pick-badge"; badge.textContent = "✓"; fig.append(badge); }
+      fig.disabled = !svg;
+      fig.addEventListener("click", () => {
+        const cur = new Set(store.get(pickKey(c), []));
+        cur.has(i) ? cur.delete(i) : cur.add(i);
+        store.set(pickKey(c), [...cur]); renderConcept();
+      });
+      const row = document.createElement("div"); row.className = "draft-row";
       const lb = document.createElement("label"), cb = document.createElement("input"), sp = document.createElement("span");
       cb.type = "checkbox"; cb.id = "ci-" + c.key + "-" + i; cb.checked = done.includes(i); sp.textContent = name;
+      cb.title = "다 그렸으면 체크";
       cb.addEventListener("change", () => {
         const cur = new Set(store.get("dl.done." + c.key, []));
         cb.checked ? cur.add(i) : cur.delete(i); store.set("dl.done." + c.key, [...cur]);
         li.classList.toggle("done", cb.checked);
       });
       li.classList.toggle("done", cb.checked);
-      lb.append(cb, sp); li.append(fig, lb); grid.append(li);
+      lb.append(cb, sp); row.append(lb);
+      if (sample) {
+        const redo = document.createElement("button"); redo.type = "button"; redo.className = "redo"; redo.textContent = "↻";
+        redo.title = "AI로 이 초안만 다시 그리기"; redo.setAttribute("aria-label", name + " 초안 다시 그리기");
+        redo.disabled = !!oneBusy || draftBusy;
+        redo.addEventListener("click", () => aiDraftOne(c, i));
+        row.append(redo);
+      }
+      li.append(fig, row); grid.append(li);
     });
     box.append(head, acts, tip, grid);
   }
