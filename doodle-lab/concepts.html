@@ -1,0 +1,232 @@
+<title>이번 달 그릴 거리</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Gowun+Dodum&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: 스케치북 한 권 — 위에 공통 규칙, 아래로 시안 카드가 그릴 순서대로 쌓인다 */
+:root {
+  --paper: #fbf8f3;
+  --sheet: #ffffff;
+  --ink: #2f2b3a;
+  --ink-soft: #6b6578;
+  --line: #e6e0d6;
+  --accent: #d9776b;
+  --tag-bg: #f3eee6;
+  --f-display: "Gaegu", "Gowun Dodum", system-ui, sans-serif;
+  --f-body: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #1e1c24; --sheet: #27242f; --ink: #efeaf4; --ink-soft: #aaa3b5;
+    --line: #3a3644; --accent: #f0998e; --tag-bg: #332f3c; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #1e1c24; --sheet: #27242f; --ink: #efeaf4; --ink-soft: #aaa3b5;
+  --line: #3a3644; --accent: #f0998e; --tag-bg: #332f3c; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--f-body);
+  font-size: 15px; line-height: 1.7;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+.wrap { max-width: 860px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2 { font-family: var(--f-display); font-weight: 700; text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(36px, 7vw, 52px); }
+h2 { font-size: 30px; }
+h3 { font-size: 13px; letter-spacing: .06em; color: var(--ink-soft); margin: 0 0 6px; font-weight: 400; }
+p { margin: 0; }
+.lede { color: var(--ink-soft); max-width: 62ch; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+.rules { background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; display: grid; gap: 10px; }
+.rules ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+.order { display: flex; flex-wrap: wrap; gap: 8px; }
+.order a { text-decoration: none; color: var(--ink); background: var(--tag-bg); border-radius: 999px; padding: 4px 12px; font-size: 14px; }
+.order a b { color: var(--accent); font-family: var(--f-mono); font-weight: 500; margin-right: 4px; }
+
+.card { background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; padding: 24px 22px; display: grid; gap: 18px; scroll-margin-top: 16px; }
+.card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.when { font-size: 13px; background: var(--tag-bg); border-radius: 999px; padding: 3px 12px; white-space: nowrap; }
+.when.now { background: var(--accent); color: var(--sheet); }
+
+.swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+.sw { display: grid; gap: 4px; justify-items: center; font-size: 12px; color: var(--ink-soft); }
+.sw i { width: 52px; height: 38px; border-radius: 40% 55% 45% 50% / 55% 45% 55% 45%; background: var(--c); filter: url(#crayon); display: block; }
+.sw span { font-family: var(--f-mono); font-size: 11px; }
+
+.cols { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; }
+.cols > div { min-width: 0; }
+@media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+
+.items { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 14px; }
+.items li { padding-left: 22px; position: relative; }
+.items li::before { content: ""; position: absolute; left: 2px; top: .62em; width: 11px; height: 11px; border: 1.5px solid var(--ink-soft); border-radius: 3px; }
+
+.evidence { display: grid; gap: 6px; font-size: 14px; }
+.evidence .row { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px dashed var(--line); padding-bottom: 4px; }
+.evidence .row span:first-child { color: var(--ink-soft); }
+.why { font-size: 14px; }
+.why b { font-weight: 400; background: linear-gradient(transparent 60%, color-mix(in srgb, var(--accent) 30%, transparent) 60%); }
+
+.foot { color: var(--ink-soft); font-size: 13px; display: grid; gap: 6px; }
+.foot ul { margin: 0; padding-left: 18px; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="crayon"><feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="4"/><feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.6 1.25"/><feComposite in="SourceGraphic" operator="in"/></filter>
+</svg>
+
+<main class="wrap">
+  <header style="display:grid;gap:10px">
+    <h3>doodle-lab · 미리캔버스 시장 조사 기반 시안</h3>
+    <h1>이번 달 그릴 거리</h1>
+    <p class="lede">미리캔버스 인기 일러스트 검색어 697개와 키워드별 상위 요소 약 4만 개를 분석해서, <b>찾는 사람은 많은데 손그림 요소는 드문</b> 주제 다섯 개를 골랐어요. 마감이 가까운 순서대로 놓았습니다.</p>
+    <nav class="order" aria-label="시안 목록">
+      <a href="#winter"><b>1</b>겨울 간식</a>
+      <a href="#seollal"><b>2</b>설날 소품</a>
+      <a href="#ppt"><b>3</b>PPT 포인트</a>
+      <a href="#sports"><b>4</b>운동회 도구</a>
+      <a href="#jobs"><b>5</b>직업 도구</a>
+    </nav>
+  </header>
+
+  <section class="rules">
+    <h2 style="font-size:24px">모든 시안 공통 규칙</h2>
+    <ul>
+      <li><b>사람 없이 사물만</b> 그려요. 상위 요소 대부분이 캐릭터라서, 소품만 있는 세트가 빈자리입니다.</li>
+      <li>파스텔 색연필 질감, 검은 외곽선 없음, 글자·숫자 없음, 투명 배경.</li>
+      <li>한 세트 10~12개, <b>소품 1개 = PNG 1장</b>으로 올려요. 한 캔버스에 같이 그려도 툴이 나눠줍니다.</li>
+      <li>각 카드의 팔레트 안에서만 칠해서 세트 전체가 한 작가 것처럼 보이게 해요.</li>
+      <li>남의 요소를 보고 따라 그리지 않기. 비교는 "뭐가 이미 많은지" 볼 때만.</li>
+    </ul>
+  </section>
+
+  <!-- 1 -->
+  <article class="card" id="winter">
+    <div class="card-head"><h2>1. 포근한 겨울 간식·소품</h2><span class="when now">지금 바로 · 2월까지 수요</span></div>
+    <div class="swatches">
+      <div class="sw"><i style="--c:#c9a089"></i>코코아<span>#C9A089</span></div>
+      <div class="sw"><i style="--c:#f3e3c3"></i>크림<span>#F3E3C3</span></div>
+      <div class="sw"><i style="--c:#f5b47a"></i>귤<span>#F5B47A</span></div>
+      <div class="sw"><i style="--c:#f2b8c6"></i>딸기우유<span>#F2B8C6</span></div>
+      <div class="sw"><i style="--c:#b9d3e8"></i>겨울하늘<span>#B9D3E8</span></div>
+    </div>
+    <div class="cols">
+      <div><h3>그릴 것</h3>
+        <ul class="items"><li>붕어빵 두 마리</li><li>군고구마 종이봉투</li><li>호빵</li><li>귤 바구니</li><li>코코아 머그와 마시멜로</li><li>벙어리장갑 한 쌍</li><li>방울 털모자</li><li>줄무늬 목도리</li><li>털실 뭉치와 뜨개바늘</li><li>호호 김 나는 찻주전자</li><li>눈 결정 3종</li><li>작은 장작 난로</li></ul>
+      </div>
+      <div class="evidence"><h3>근거</h3>
+        <div class="row"><span>"겨울" 검색 순위</span><span class="mono">74위</span></div>
+        <div class="row"><span>상위 요소 중 손그림</span><span class="mono">15%</span></div>
+        <div class="row"><span>"겨울-일러스트" 손그림</span><span class="mono">3%</span></div>
+        <p class="why">지금 상위는 <b>파란 눈 풍경과 눈사람</b>이 대부분이에요. 따뜻한 색 간식·소품은 붕어빵 정도만 있습니다.</p>
+      </div>
+    </div>
+  </article>
+
+  <!-- 2 -->
+  <article class="card" id="seollal">
+    <div class="card-head"><h2>2. 사람 없는 설날 소품</h2><span class="when">12월 중순까지 올리기 · 설날 2027년 2월</span></div>
+    <div class="swatches">
+      <div class="sw"><i style="--c:#f4b6b8"></i>연분홍<span>#F4B6B8</span></div>
+      <div class="sw"><i style="--c:#c9dfa6"></i>연두<span>#C9DFA6</span></div>
+      <div class="sw"><i style="--c:#b8d6ee"></i>하늘<span>#B8D6EE</span></div>
+      <div class="sw"><i style="--c:#f7d88b"></i>개나리<span>#F7D88B</span></div>
+      <div class="sw"><i style="--c:#c98f8a"></i>팥<span>#C98F8A</span></div>
+    </div>
+    <div class="cols">
+      <div><h3>그릴 것</h3>
+        <ul class="items"><li>복주머니</li><li>떡국 한 그릇</li><li>윷 네 개와 말</li><li>방패연과 얼레</li><li>옷걸이에 걸린 색동저고리</li><li>꽃신 한 켤레</li><li>무늬만 있는 세뱃돈 봉투</li><li>매화 가지</li><li>까치</li><li>소나무 가지</li><li>곶감 꼬치</li><li>약과와 한과 접시</li></ul>
+      </div>
+      <div class="evidence"><h3>근거</h3>
+        <div class="row"><span>"한복" 순위 / 손그림</span><span class="mono">75위 / 2%</span></div>
+        <div class="row"><span>"설날" 순위 / 손그림</span><span class="mono">71위 / 20%</span></div>
+        <div class="row"><span>"소나무" 순위 / 손그림</span><span class="mono">60위 / 8%</span></div>
+        <p class="why">한복 상위 60개는 거의 전부 <b>굵은 외곽선의 한복 입은 아이 캐릭터</b>예요. 색동 파스텔로 칠한 사물 세트는 비어 있습니다.</p>
+      </div>
+    </div>
+  </article>
+
+  <!-- 3 -->
+  <article class="card" id="ppt">
+    <div class="card-head"><h2>3. 색연필 PPT 포인트 세트</h2><span class="when">언제든 · 1년 내내 수요</span></div>
+    <div class="swatches">
+      <div class="sw"><i style="--c:#a9cbea"></i>하늘<span>#A9CBEA</span></div>
+      <div class="sw"><i style="--c:#f6de8d"></i>버터<span>#F6DE8D</span></div>
+      <div class="sw"><i style="--c:#f2a99a"></i>코랄<span>#F2A99A</span></div>
+      <div class="sw"><i style="--c:#a8d8c4"></i>민트<span>#A8D8C4</span></div>
+      <div class="sw"><i style="--c:#c7b8e6"></i>라벤더<span>#C7B8E6</span></div>
+    </div>
+    <div class="cols">
+      <div><h3>그릴 것</h3>
+        <ul class="items"><li>곧은 화살표</li><li>휘어진 화살표</li><li>U턴 화살표</li><li>동그라미 강조 낙서</li><li>직선 밑줄</li><li>물결 밑줄</li><li>체크 표시</li><li>엑스 표시</li><li>반짝이 별 셋</li><li>형광펜 칠 띠</li><li>빈 말풍선</li><li>짧은 집중선</li></ul>
+      </div>
+      <div class="evidence"><h3>근거</h3>
+        <div class="row"><span>"화살표-아이콘" 순위 / 손그림</span><span class="mono">9위 / 3%</span></div>
+        <div class="row"><span>"체크-아이콘" 손그림</span><span class="mono">3%</span></div>
+        <div class="row"><span>"화살표" (일반) 손그림</span><span class="mono">33%</span></div>
+        <p class="why">아이콘 검색 상위는 <b>전부 검정 도형</b>이에요. 손그림 화살표는 낱개로는 있지만, 색을 맞춘 <b>세트</b>는 드뭅니다. 수요가 가장 큰 주제예요.</p>
+      </div>
+    </div>
+  </article>
+
+  <!-- 4 -->
+  <article class="card" id="sports">
+    <div class="card-head"><h2>4. 운동회 도구 세트</h2><span class="when">3월까지 올리기 · 5월·9~10월 수요</span></div>
+    <div class="swatches">
+      <div class="sw"><i style="--c:#f2a1a1"></i>홍<span>#F2A1A1</span></div>
+      <div class="sw"><i style="--c:#9dbbe6"></i>청<span>#9DBBE6</span></div>
+      <div class="sw"><i style="--c:#f6d77f"></i>노랑<span>#F6D77F</span></div>
+      <div class="sw"><i style="--c:#b9db9e"></i>잔디<span>#B9DB9E</span></div>
+      <div class="sw"><i style="--c:#cdb9e8"></i>연보라<span>#CDB9E8</span></div>
+    </div>
+    <div class="cols">
+      <div><h3>그릴 것</h3>
+        <ul class="items"><li>박 터뜨리기 박</li><li>콩주머니 세 개</li><li>청·홍 머리띠</li><li>이어달리기 바통</li><li>응원 폼폼 한 쌍</li><li>줄다리기 밧줄</li><li>리본 달린 메달</li><li>호루라기</li><li>결승선 테이프</li><li>만국기 가랜드</li><li>공굴리기 큰 공</li><li>확성기</li></ul>
+      </div>
+      <div class="evidence"><h3>근거</h3>
+        <div class="row"><span>"운동회" 순위 / 손그림</span><span class="mono">61위 / 5%</span></div>
+        <div class="row"><span>상위 요소 작가 수</span><span class="mono">34명</span></div>
+        <p class="why">어린이집·유치원 태그가 많은 주제예요. 상위는 <b>응원하는 아이 캐릭터와 가랜드</b> 위주라서 도구만 모은 세트가 비어 있습니다.</p>
+      </div>
+    </div>
+  </article>
+
+  <!-- 5 -->
+  <article class="card" id="jobs">
+    <div class="card-head"><h2>5. 직업 체험 도구 세트</h2><span class="when">언제든 · 진로교육 자료 수요</span></div>
+    <div class="swatches">
+      <div class="sw"><i style="--c:#a6d9cf"></i>민트<span>#A6D9CF</span></div>
+      <div class="sw"><i style="--c:#afcbea"></i>하늘<span>#AFCBEA</span></div>
+      <div class="sw"><i style="--c:#f5c1a0"></i>살구<span>#F5C1A0</span></div>
+      <div class="sw"><i style="--c:#f4dc94"></i>버터<span>#F4DC94</span></div>
+      <div class="sw"><i style="--c:#b5bfcc"></i>회청<span>#B5BFCC</span></div>
+    </div>
+    <div class="cols">
+      <div><h3>그릴 것</h3>
+        <ul class="items"><li>청진기</li><li>구급상자</li><li>소방 헬멧과 호스</li><li>경찰 모자</li><li>요리사 모자와 국자</li><li>분필과 칠판지우개</li><li>붓과 팔레트</li><li>렌치와 드라이버</li><li>우편 가방과 편지</li><li>조종사 모자</li><li>제빵사 밀대</li><li>원예 모종삽과 화분</li></ul>
+      </div>
+      <div class="evidence"><h3>근거</h3>
+        <div class="row"><span>"간호사" 순위 / 손그림</span><span class="mono">37위 / 17%</span></div>
+        <div class="row"><span>"선생님" 순위 / 손그림</span><span class="mono">191위 / 7%</span></div>
+        <div class="row"><span>"소방관" 순위 / 손그림</span><span class="mono">284위 / 7%</span></div>
+        <p class="why">직업 검색 결과는 <b>유니폼 입은 사람 그림</b>이 거의 전부예요. 사람을 안 그리니 성별·외모 고민도 없고, 학교 자료로 쓰기 편합니다.</p>
+      </div>
+    </div>
+  </article>
+
+  <footer class="foot">
+    <p><b>데이터 읽는 법</b></p>
+    <ul>
+      <li>순위: 미리캔버스 일러스트 사이트맵에 실린 검색어 순서예요. 인기순이라고 가정했지만 공식 확인은 못 했어요.</li>
+      <li>손그림 비율: 키워드별 상위 약 60개 요소 중 색연필·크레파스·손그림·수채화·낙서 등의 태그가 붙은 비율이에요.</li>
+      <li>2026년 11월 17일 수집. 작가 이름 등 원본 데이터는 분석 후 삭제하고 통계만 남겼어요.</li>
+    </ul>
+  </footer>
+</main>
