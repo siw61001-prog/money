@@ -1,0 +1,808 @@
+<title>낙서 작업대</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Gowun+Dodum&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* Layout: 왼쪽 설정 패널 + 오른쪽 작업대(원본 → 잘라낸 소품 카드). 좁은 화면에선 위아래로 쌓인다 */
+:root {
+  --paper: #fbf8f3;
+  --sheet: #ffffff;
+  --ink: #2f2b3a;
+  --ink-soft: #6b6578;
+  --line: #e6e0d6;
+  --accent: #d9776b;
+  --accent-ink: #ffffff;
+  --tag-bg: #f3eee6;
+  --ok: #3f8a5f;
+  --warn: #b7791f;
+  --check-a: #ffffff;
+  --check-b: #ece7df;
+  --f-display: "Gaegu", "Gowun Dodum", system-ui, sans-serif;
+  --f-body: "Gowun Dodum", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #1e1c24; --sheet: #27242f; --ink: #efeaf4; --ink-soft: #aaa3b5; --line: #3a3644;
+    --accent: #f0998e; --accent-ink: #1e1c24; --tag-bg: #332f3c; --ok: #7cc79a; --warn: #e3b25c;
+    --check-a: #3a3644; --check-b: #2f2b38; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #1e1c24; --sheet: #27242f; --ink: #efeaf4; --ink-soft: #aaa3b5; --line: #3a3644;
+  --accent: #f0998e; --accent-ink: #1e1c24; --tag-bg: #332f3c; --ok: #7cc79a; --warn: #e3b25c;
+  --check-a: #3a3644; --check-b: #2f2b38; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 64px;
+}
+h1, h2 { font-family: var(--f-display); font-weight: 700; margin: 0; line-height: 1.15; text-wrap: balance; }
+h1 { font-size: clamp(32px, 6vw, 44px); }
+h2 { font-size: 24px; }
+p { margin: 0; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.soft { color: var(--ink-soft); }
+.app { max-width: 1240px; margin: 0 auto; display: grid; gap: 20px; }
+.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 20px; }
+.layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+
+.panel { background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; padding: 18px; display: grid; gap: 16px; }
+@media (min-width: 861px) { .panel.side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); } }
+.group { display: grid; gap: 10px; }
+.group-title { font-size: 12px; letter-spacing: .08em; color: var(--ink-soft); }
+.field { display: grid; gap: 4px; }
+.field label { font-size: 14px; display: flex; justify-content: space-between; gap: 8px; }
+.field label output { font-family: var(--f-mono); font-size: 13px; color: var(--ink-soft); }
+.hint { font-size: 12px; color: var(--ink-soft); }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+input[type="text"], select, textarea {
+  font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; width: 100%;
+}
+textarea { resize: vertical; min-height: 64px; font-size: 13px; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+button { font: inherit; cursor: pointer; border-radius: 999px; border: 1px solid var(--line); background: var(--sheet); color: var(--ink); padding: 6px 14px; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.small { font-size: 13px; padding: 3px 10px; }
+
+.drop { border: 2px dashed var(--line); border-radius: 14px; padding: 22px; text-align: center; display: grid; gap: 8px; justify-items: center; background: var(--sheet); }
+.drop.over { border-color: var(--accent); background: var(--tag-bg); }
+.drop strong { font-family: var(--f-display); font-size: 24px; }
+
+.work { display: grid; gap: 20px; min-width: 0; }
+.sources { display: grid; gap: 12px; }
+.source { background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 10px; }
+.source-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; }
+.source-head .name { font-weight: 700; overflow-wrap: anywhere; }
+.chip { font-size: 12px; background: var(--tag-bg); border-radius: 999px; padding: 2px 10px; }
+.chip.ex { background: var(--accent); color: var(--accent-ink); }
+.checker { background-color: var(--check-a); background-image: conic-gradient(var(--check-b) 25%, transparent 0 50%, var(--check-b) 0 75%, transparent 0); background-size: 18px 18px; border-radius: 10px; }
+.source canvas { width: 100%; height: auto; display: block; border-radius: 10px; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.toolbar .left, .toolbar .right { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.items { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.item { background: var(--sheet); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 8px; align-content: start; }
+.item.sel { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.item.off { opacity: .45; }
+.item .thumb { aspect-ratio: 1 / 1; display: grid; place-items: center; overflow: hidden; }
+.item .thumb img { max-width: 100%; max-height: 100%; display: block; }
+.item-head { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.num { font-family: var(--f-mono); font-size: 12px; color: var(--ink-soft); }
+.badges { display: flex; flex-wrap: wrap; gap: 4px; font-size: 12px; }
+.badge { border-radius: 999px; padding: 1px 8px; background: var(--tag-bg); }
+.badge.ok { color: var(--ok); }
+.badge.warn { color: var(--warn); }
+.meta { display: grid; gap: 6px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.item-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.empty { border: 1px dashed var(--line); border-radius: 14px; padding: 28px; text-align: center; color: var(--ink-soft); }
+
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); background: var(--ink); color: var(--paper); padding: 8px 16px; border-radius: 999px; font-size: 14px; z-index: 20; max-width: calc(100% - 32px); }
+@media (prefers-reduced-motion: no-preference) { .toast { transition: opacity .2s; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div style="display:grid;gap:4px">
+      <p class="soft" style="font-size:13px;letter-spacing:.06em">doodle-lab</p>
+      <h1>낙서 작업대</h1>
+    </div>
+    <p class="soft" style="max-width:52ch">한 장에 여러 소품을 그려 올리면 배경을 지우고 소품별로 잘라서 미리캔버스용 PNG로 뽑아줘요.</p>
+  </header>
+
+  <div class="layout">
+    <aside class="panel side" aria-label="설정">
+      <div class="group">
+        <div class="field">
+          <label for="set">세트 이름</label>
+          <input type="text" id="set" value="겨울간식">
+          <span class="hint">파일 이름과 AI 태그의 주제로 쓰여요.</span>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">배경 지우기</div>
+        <div class="field">
+          <label for="tol">종이색 허용 범위 <output id="tolOut"></output></label>
+          <input type="range" id="tol" min="6" max="90" value="28">
+          <span class="hint">종이 질감이 남으면 올리고, 연한 색이 지워지면 내려요.</span>
+        </div>
+        <div class="field">
+          <label for="soft">가장자리 부드럽게 <output id="softOut"></output></label>
+          <input type="range" id="soft" min="0" max="80" value="24">
+        </div>
+        <label class="check"><input type="checkbox" id="holes" checked> 소품 안쪽 빈 공간도 투명하게</label>
+      </div>
+
+      <div class="group">
+        <div class="group-title">소품 나누기</div>
+        <div class="field">
+          <label for="merge">이 거리 안이면 한 소품 <output id="mergeOut"></output></label>
+          <input type="range" id="merge" min="0" max="80" value="14">
+          <span class="hint">눈송이처럼 조각난 그림이 쪼개지면 올려요.</span>
+        </div>
+        <div class="field">
+          <label for="minArea">작은 점 무시 <output id="minAreaOut"></output></label>
+          <input type="range" id="minArea" min="0" max="50" value="4">
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-title">내보내기</div>
+        <div class="field">
+          <label for="size">긴 변 크기</label>
+          <select id="size">
+            <option value="1000">1000px</option>
+            <option value="2000" selected>2000px (미리캔버스 추천)</option>
+            <option value="3000">3000px</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="pad">여백 <output id="padOut"></output></label>
+          <input type="range" id="pad" min="0" max="20" value="6">
+        </div>
+        <div class="field">
+          <label for="fmt">파일 형식</label>
+          <select id="fmt">
+            <option value="png" selected>PNG (투명 배경)</option>
+            <option value="jpg">JPG (흰 배경)</option>
+            <option value="both">PNG + JPG</option>
+          </select>
+        </div>
+        <label class="check"><input type="checkbox" id="square"> 정사각형 캔버스 (스티커용)</label>
+      </div>
+    </aside>
+
+    <main class="work">
+      <label class="drop" id="drop" for="file">
+        <strong>그림 올리기</strong>
+        <span class="soft">눌러서 고르거나, 파일을 끌어다 놓거나, 붙여넣기(⌘V)</span>
+        <span class="hint">흰 종이에 그린 JPG도, 배경 없는 PNG도 돼요. 소품 사이를 조금 띄워 그리면 잘 나뉘어요.</span>
+        <input type="file" id="file" accept="image/*" multiple hidden>
+      </label>
+
+      <section class="sources" id="sources" aria-label="올린 그림"></section>
+
+      <section class="panel" aria-label="잘라낸 소품">
+        <div class="toolbar">
+          <div class="left">
+            <h2 id="itemsTitle">소품</h2>
+            <button class="small" id="mergeBtn" disabled>선택한 것 합치기</button>
+            <button class="small" id="clearSelBtn" disabled>선택 해제</button>
+          </div>
+          <div class="right">
+            <button id="aiBtn" disabled>AI로 제목·태그 만들기</button>
+            <button class="primary" id="zipBtn" disabled>전체 저장 (ZIP)</button>
+          </div>
+        </div>
+        <p class="hint" id="aiNote"></p>
+        <div class="items" id="items"></div>
+      </section>
+    </main>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const MAX_SIDE = 4000;
+  const S = { tol: 28, soft: 24, holes: true, merge: 14, minArea: 4, pad: 6, size: 2000, square: false, fmt: "png", set: "겨울간식" };
+  let sources = [];   // {id, name, example, w, h, raw: ImageData, proc, comps}
+  let items = [];     // {id, srcId, labels:Set, crop: canvas, name, include, sel, meta, scaleSrc}
+  let uid = 1;
+
+  // ---------- runtime capabilities (absent when opened outside claude.ai) ----------
+  const use = (name) => (window.claude && window.claude.use ? window.claude.use(name).catch(() => null) : Promise.resolve(null));
+  const downloadsP = use("downloads");
+  let sample = null, imgLimits = null;
+  use("sample").then(async (s) => {
+    sample = s;
+    if (s) { try { imgLimits = (await s.limits()).images || null; } catch { imgLimits = null; } }
+    updateButtons();
+  });
+
+  const toastEl = $("#toast");
+  let toastT;
+  function toast(msg) { toastEl.textContent = msg; toastEl.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (toastEl.hidden = true), 2600); }
+
+  async function saveBlob(filename, blob) {
+    const dl = await downloadsP;
+    if (dl) {
+      try { await dl.save({ filename, data: blob }); toast("저장했어요"); }
+      catch (e) { toast(e && e.code === "declined" ? "저장을 취소했어요" : "저장하지 못했어요 (" + (e && e.code) + ")"); }
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = filename; document.body.append(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+  }
+
+  // ---------- settings ----------
+  const fmtOut = { tol: (v) => v, soft: (v) => v, merge: (v) => v + "px", minArea: (v) => (v / 100).toFixed(2) + "%", pad: (v) => v + "%" };
+  for (const k of Object.keys(fmtOut)) {
+    const el = $("#" + k), out = $("#" + k + "Out");
+    out.textContent = fmtOut[k](el.value);
+    el.addEventListener("input", () => { S[k] = +el.value; out.textContent = fmtOut[k](el.value); schedule(k === "pad" ? "render" : "process"); });
+  }
+  $("#holes").addEventListener("change", (e) => { S.holes = e.target.checked; schedule("process"); });
+  $("#square").addEventListener("change", (e) => { S.square = e.target.checked; schedule("render"); });
+  $("#size").addEventListener("change", (e) => { S.size = +e.target.value; schedule("render"); });
+  $("#fmt").addEventListener("change", (e) => { S.fmt = e.target.value; });
+  $("#set").addEventListener("input", (e) => {
+    const old = S.set; S.set = e.target.value.trim() || "소품";
+    items.forEach((it, i) => { if (it.name.startsWith(old + "_")) it.name = S.set + "_" + String(i + 1).padStart(2, "0"); });
+    renderItems();
+  });
+  let schedT, schedKind = "render";
+  function schedule(kind) {
+    if (kind === "process") schedKind = "process";
+    clearTimeout(schedT);
+    schedT = setTimeout(() => { const k = schedKind; schedKind = "render"; if (k === "process") processAll(); else renderItems(); }, 220);
+  }
+
+  // ---------- input ----------
+  const drop = $("#drop");
+  $("#file").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); addFiles(e.dataTransfer.files); });
+  window.addEventListener("paste", (e) => {
+    const files = [...(e.clipboardData?.items || [])].filter((i) => i.type.startsWith("image/")).map((i) => i.getAsFile());
+    if (files.length) addFiles(files);
+  });
+
+  async function addFiles(fileList) {
+    const files = [...fileList].filter((f) => f && f.type.startsWith("image/"));
+    if (!files.length) return;
+    sources = sources.filter((s) => !s.example);
+    for (const f of files) {
+      try {
+        let bmp;
+        try { bmp = await createImageBitmap(f, { imageOrientation: "from-image" }); }
+        catch { bmp = await loadImg(f); }
+        sources.push(makeSource(bmp, f.name.replace(/\.[^.]+$/, ""), false));
+      } catch { toast(f.name + " 파일을 열 수 없어요"); }
+    }
+    processAll();
+  }
+  function loadImg(file) {
+    return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(file); });
+  }
+  function makeSource(img, name, example) {
+    const iw = img.width || img.naturalWidth, ih = img.height || img.naturalHeight;
+    const k = Math.min(1, MAX_SIDE / Math.max(iw, ih));
+    const w = Math.round(iw * k), h = Math.round(ih * k);
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, w, h);
+    return { id: uid++, name, example, w, h, raw: ctx.getImageData(0, 0, w, h), shrunk: k < 1 };
+  }
+
+  // ---------- background removal ----------
+  const clamp = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
+  function removeBg(raw, w, h) {
+    const d = new Uint8ClampedArray(raw.data);
+    const n = w * h;
+    let transp = 0, cnt = 0;
+    const step = Math.max(1, Math.floor(n / 60000));
+    for (let i = 0; i < n; i += step) { cnt++; if (d[i * 4 + 3] < 250) transp++; }
+    if (transp / cnt > 0.02) return { data: d, mode: "alpha" };
+
+    const rs = [], gs = [], bs = [];
+    const push = (i) => { rs.push(d[i * 4]); gs.push(d[i * 4 + 1]); bs.push(d[i * 4 + 2]); };
+    const bstep = Math.max(1, Math.floor((w + h) / 3000));
+    for (let x = 0; x < w; x += bstep) { push(x); push((h - 1) * w + x); }
+    for (let y = 0; y < h; y += bstep) { push(y * w); push(y * w + w - 1); }
+    const med = (a) => { a.sort((p, q) => p - q); return a[a.length >> 1]; };
+    const br = med(rs), bgc = med(gs), bb = med(bs);
+
+    const dist = new Uint8Array(n);
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      dist[i] = Math.max(Math.abs(d[j] - br), Math.abs(d[j + 1] - bgc), Math.abs(d[j + 2] - bb));
+    }
+    const tol = S.tol, soft = Math.max(1, S.soft);
+    const isBg = new Uint8Array(n);
+    let near = null;
+    if (S.holes) {
+      for (let i = 0; i < n; i++) if (dist[i] < tol) isBg[i] = 1;
+    } else {
+      const stack = new Int32Array(n); let sp = 0;
+      const tryPush = (i) => { if (!isBg[i] && dist[i] < tol) { isBg[i] = 1; stack[sp++] = i; } };
+      for (let x = 0; x < w; x++) { tryPush(x); tryPush((h - 1) * w + x); }
+      for (let y = 0; y < h; y++) { tryPush(y * w); tryPush(y * w + w - 1); }
+      while (sp) {
+        const i = stack[--sp], x = i % w;
+        if (x > 0) tryPush(i - 1);
+        if (x < w - 1) tryPush(i + 1);
+        if (i >= w) tryPush(i - w);
+        if (i < n - w) tryPush(i + w);
+      }
+      near = dilate(isBg, w, h, 3);
+    }
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      if (isBg[i]) { d[j + 3] = 0; continue; }
+      const dv = dist[i];
+      if (dv < tol + soft && (!near || near[i])) {
+        const a = (dv - tol) / soft;
+        if (a <= 0.03) { d[j + 3] = 0; continue; }
+        const am = Math.max(a, 0.35), ia = 1 - am;
+        d[j] = clamp((d[j] - br * ia) / am);
+        d[j + 1] = clamp((d[j + 1] - bgc * ia) / am);
+        d[j + 2] = clamp((d[j + 2] - bb * ia) / am);
+        d[j + 3] = Math.round(d[j + 3] * a);
+      }
+    }
+    return { data: d, mode: "key" };
+  }
+  function dilate(mask, w, h, r) {
+    let cur = mask;
+    for (let p = 0; p < r; p++) {
+      const nx = new Uint8Array(cur);
+      for (let i = 0; i < w * h; i++) {
+        if (cur[i]) continue;
+        const x = i % w;
+        if ((x > 0 && cur[i - 1]) || (x < w - 1 && cur[i + 1]) || (i >= w && cur[i - w]) || (i < w * h - w && cur[i + w])) nx[i] = 1;
+      }
+      cur = nx;
+    }
+    return cur;
+  }
+
+  // ---------- splitting into items ----------
+  function labelItems(data, w, h) {
+    const s = Math.max(1, Math.ceil(Math.max(w, h) / 700));
+    const gw = Math.ceil(w / s), gh = Math.ceil(h / s), G = gw * gh;
+    const occ = new Uint32Array(G);
+    for (let y = 0; y < h; y++) {
+      const row = ((y / s) | 0) * gw;
+      for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] > 40) occ[row + ((x / s) | 0)]++;
+    }
+    const minCell = Math.max(1, Math.floor(s * s * 0.05));
+    const o = new Uint8Array(G);
+    for (let c = 0; c < G; c++) if (occ[c] >= minCell) o[c] = 1;
+
+    const r = Math.ceil(S.merge / s);
+    let dil = o;
+    if (r > 0) {
+      const ps = new Int32Array((gw + 1) * (gh + 1));
+      for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++)
+        ps[(y + 1) * (gw + 1) + x + 1] = o[y * gw + x] + ps[y * (gw + 1) + x + 1] + ps[(y + 1) * (gw + 1) + x] - ps[y * (gw + 1) + x];
+      dil = new Uint8Array(G);
+      for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+        const x0 = Math.max(0, x - r), x1 = Math.min(gw, x + r + 1), y0 = Math.max(0, y - r), y1 = Math.min(gh, y + r + 1);
+        const sum = ps[y1 * (gw + 1) + x1] - ps[y0 * (gw + 1) + x1] - ps[y1 * (gw + 1) + x0] + ps[y0 * (gw + 1) + x0];
+        if (sum > 0) dil[y * gw + x] = 1;
+      }
+    }
+    const lab = new Int32Array(G);
+    const comps = [];
+    const q = new Int32Array(G);
+    let next = 1;
+    for (let c0 = 0; c0 < G; c0++) {
+      if (!dil[c0] || lab[c0]) continue;
+      const id = next++;
+      let qh = 0, qt = 0; q[qt++] = c0; lab[c0] = id;
+      const comp = { id, area: 0, x0: 1e9, y0: 1e9, x1: -1, y1: -1 };
+      while (qh < qt) {
+        const c = q[qh++], cx = c % gw, cy = (c / gw) | 0;
+        if (o[c]) {
+          comp.area += occ[c];
+          if (cx < comp.x0) comp.x0 = cx; if (cx > comp.x1) comp.x1 = cx;
+          if (cy < comp.y0) comp.y0 = cy; if (cy > comp.y1) comp.y1 = cy;
+        }
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = cx + dx, ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
+          const nc = ny * gw + nx;
+          if (dil[nc] && !lab[nc]) { lab[nc] = id; q[qt++] = nc; }
+        }
+      }
+      comps.push(comp);
+    }
+    const minA = Math.max(30, (w * h * S.minArea) / 10000);
+    const kept = comps.filter((c) => c.area >= minA && c.x1 >= 0);
+    kept.sort((a, b) => (Math.abs(a.y0 - b.y0) * s > h * 0.15 ? a.y0 - b.y0 : a.x0 - b.x0));
+    return { s, gw, gh, lab, comps: kept };
+  }
+
+  function cropItem(src, labelSet) {
+    const { data } = src.proc, { w, h } = src, L = src.labels;
+    const sel = new Uint8Array(L.comps.length + L.lab.reduce((m, v) => (v > m ? v : m), 0) + 2);
+    let bx0 = 1e9, by0 = 1e9, bx1 = -1, by1 = -1;
+    for (const id of labelSet) {
+      sel[id] = 1;
+      const c = L.comps.find((k) => k.id === id);
+      if (c) { bx0 = Math.min(bx0, c.x0); by0 = Math.min(by0, c.y0); bx1 = Math.max(bx1, c.x1); by1 = Math.max(by1, c.y1); }
+    }
+    const s = L.s;
+    const X0 = Math.max(0, (bx0 - 1) * s), Y0 = Math.max(0, (by0 - 1) * s), X1 = Math.min(w, (bx1 + 2) * s), Y1 = Math.min(h, (by1 + 2) * s);
+    let tx0 = 1e9, ty0 = 1e9, tx1 = -1, ty1 = -1;
+    for (let y = Y0; y < Y1; y++) {
+      const row = ((y / s) | 0) * L.gw;
+      for (let x = X0; x < X1; x++) {
+        if (data[(y * w + x) * 4 + 3] > 8 && sel[L.lab[row + ((x / s) | 0)]]) {
+          if (x < tx0) tx0 = x; if (x > tx1) tx1 = x; if (y < ty0) ty0 = y; if (y > ty1) ty1 = y;
+        }
+      }
+    }
+    if (tx1 < 0) return null;
+    const cw = tx1 - tx0 + 1, ch = ty1 - ty0 + 1;
+    const out = new ImageData(cw, ch);
+    for (let y = ty0; y <= ty1; y++) {
+      const row = ((y / s) | 0) * L.gw;
+      for (let x = tx0; x <= tx1; x++) {
+        if (!sel[L.lab[row + ((x / s) | 0)]]) continue;
+        const si = (y * w + x) * 4, di = ((y - ty0) * cw + (x - tx0)) * 4;
+        out.data[di] = data[si]; out.data[di + 1] = data[si + 1]; out.data[di + 2] = data[si + 2]; out.data[di + 3] = data[si + 3];
+      }
+    }
+    const c = document.createElement("canvas"); c.width = cw; c.height = ch;
+    c.getContext("2d").putImageData(out, 0, 0);
+    return { canvas: c, box: [tx0, ty0, tx1, ty1] };
+  }
+
+  // ---------- pipeline ----------
+  function processAll() {
+    const prev = items;
+    items = [];
+    for (const src of sources) {
+      src.proc = removeBg(src.raw, src.w, src.h);
+      src.labels = labelItems(src.proc.data, src.w, src.h);
+      src.comps = src.labels.comps;
+      const old = prev.filter((it) => it.srcId === src.id);
+      src.labels.comps.forEach((c, i) => {
+        const cr = cropItem(src, new Set([c.id]));
+        if (!cr) return;
+        const o = old[i];
+        items.push({ id: uid++, srcId: src.id, labels: new Set([c.id]), crop: cr.canvas, box: cr.box, name: o ? o.name : "", include: o ? o.include : true, sel: false, meta: o ? o.meta : null });
+      });
+    }
+    items.forEach((it, i) => { if (!it.name) it.name = S.set + "_" + String(i + 1).padStart(2, "0"); });
+    renderSources();
+    renderItems();
+  }
+
+  function renderOut(item, L, fmt) {
+    const c = item.crop;
+    const pad = Math.round((L * S.pad) / 100), inner = Math.max(1, L - 2 * pad);
+    const sc = inner / Math.max(c.width, c.height);
+    const cw = Math.max(1, Math.round(c.width * sc)), ch = Math.max(1, Math.round(c.height * sc));
+    const W = S.square ? L : cw + 2 * pad, H = S.square ? L : ch + 2 * pad;
+    const out = document.createElement("canvas"); out.width = W; out.height = H;
+    const ctx = out.getContext("2d");
+    if (fmt === "jpg") { ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H); }
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(c, Math.round((W - cw) / 2), Math.round((H - ch) / 2), cw, ch);
+    return { canvas: out, scale: sc, W, H };
+  }
+  const toBlob = (canvas, type, q) => new Promise((res) => canvas.toBlob(res, type, q));
+
+  // ---------- rendering ----------
+  function renderSources() {
+    const box = $("#sources");
+    box.replaceChildren();
+    for (const src of sources) {
+      const el = document.createElement("article");
+      el.className = "source";
+      const head = document.createElement("div"); head.className = "source-head";
+      const left = document.createElement("div"); left.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+      const nm = document.createElement("span"); nm.className = "name"; nm.textContent = src.name;
+      left.append(nm);
+      if (src.example) { const ch = document.createElement("span"); ch.className = "chip ex"; ch.textContent = "예시 그림"; left.append(ch); }
+      const info = document.createElement("span"); info.className = "chip mono";
+      info.textContent = src.w + "×" + src.h + "px · 소품 " + src.comps.length + "개" + (src.proc.mode === "alpha" ? " · 원래 투명" : "");
+      left.append(info);
+      const rm = document.createElement("button"); rm.className = "small"; rm.textContent = "빼기";
+      rm.addEventListener("click", () => { sources = sources.filter((s) => s !== src); processAll(); });
+      head.append(left, rm);
+
+      const pw = Math.min(900, src.w), k = pw / src.w, ph = Math.round(src.h * k);
+      const cv = document.createElement("canvas"); cv.width = pw; cv.height = ph; cv.className = "checker";
+      cv.setAttribute("role", "img"); cv.setAttribute("aria-label", src.name + " 배경 지운 결과와 소품 구역");
+      const tmp = document.createElement("canvas"); tmp.width = src.w; tmp.height = src.h;
+      tmp.getContext("2d").putImageData(new ImageData(src.proc.data, src.w, src.h), 0, 0);
+      const ctx = cv.getContext("2d");
+      ctx.drawImage(tmp, 0, 0, pw, ph);
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#d9776b";
+      ctx.strokeStyle = accent; ctx.fillStyle = accent; ctx.lineWidth = 2; ctx.font = "600 14px system-ui, sans-serif";
+      items.filter((it) => it.srcId === src.id).forEach((it) => {
+        const n = items.indexOf(it) + 1, [x0, y0, x1, y1] = it.box;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(x0 * k - 3, y0 * k - 3, (x1 - x0) * k + 6, (y1 - y0) * k + 6);
+        ctx.setLineDash([]);
+        ctx.fillRect(x0 * k - 3, y0 * k - 22, 24, 19);
+        ctx.save(); ctx.fillStyle = "#fff"; ctx.fillText(String(n), x0 * k + 2, y0 * k - 7); ctx.restore();
+      });
+      el.append(head, cv);
+      if (src.shrunk) { const p = document.createElement("p"); p.className = "hint"; p.textContent = "원본이 커서 긴 변 4000px로 줄여서 작업했어요."; el.append(p); }
+      box.append(el);
+    }
+  }
+
+  function renderItems() {
+    const box = $("#items");
+    box.replaceChildren();
+    $("#itemsTitle").textContent = items.length ? "소품 " + items.length + "개" : "소품";
+    if (!items.length) {
+      const e = document.createElement("div"); e.className = "empty";
+      e.textContent = sources.length ? "찾은 소품이 없어요. 종이색 허용 범위를 내려보세요." : "그림을 올리면 여기에 소품별로 나와요.";
+      box.append(e);
+    }
+    items.forEach((it, i) => {
+      const card = document.createElement("article");
+      card.className = "item" + (it.sel ? " sel" : "") + (it.include ? "" : " off");
+
+      const head = document.createElement("div"); head.className = "item-head";
+      const selL = document.createElement("label"); selL.className = "check";
+      const selC = document.createElement("input"); selC.type = "checkbox"; selC.checked = it.sel; selC.id = "sel-" + it.id;
+      selC.addEventListener("change", () => { it.sel = selC.checked; card.classList.toggle("sel", it.sel); updateButtons(); });
+      selL.append(selC, document.createTextNode("선택"));
+      const num = document.createElement("span"); num.className = "num"; num.textContent = "#" + (i + 1);
+      head.append(selL, num);
+
+      const preview = renderOut(it, 360, "png");
+      const thumb = document.createElement("div"); thumb.className = "thumb checker";
+      const img = document.createElement("img"); img.src = preview.canvas.toDataURL("image/png"); img.alt = it.meta?.title || it.name;
+      thumb.append(img);
+
+      const name = document.createElement("input"); name.type = "text"; name.value = it.name; name.id = "name-" + it.id;
+      name.setAttribute("aria-label", "파일 이름");
+      name.addEventListener("input", () => { it.name = name.value.trim() || "소품_" + (i + 1); });
+
+      const full = renderOut(it, S.size, "png");
+      const badges = document.createElement("div"); badges.className = "badges";
+      const b = (txt, cls) => { const s = document.createElement("span"); s.className = "badge " + cls; s.textContent = txt; badges.append(s); };
+      b(full.W + "×" + full.H, "mono");
+      b(Math.max(full.W, full.H) >= 700 ? "✓ 700px 이상" : "700px 미만", Math.max(full.W, full.H) >= 700 ? "ok" : "warn");
+      if (full.scale > 2) b(full.scale.toFixed(1) + "배 확대 · 흐릴 수 있음", "warn");
+      else b("✓ 화질 충분", "ok");
+
+      const meta = document.createElement("div"); meta.className = "meta";
+      if (it.meta) {
+        const t = document.createElement("input"); t.type = "text"; t.value = it.meta.title || ""; t.id = "title-" + it.id; t.setAttribute("aria-label", "제목");
+        t.addEventListener("input", () => (it.meta.title = t.value));
+        const tg = document.createElement("textarea"); tg.value = (it.meta.tags || []).join(", "); tg.id = "tags-" + it.id; tg.setAttribute("aria-label", "태그");
+        tg.addEventListener("input", () => (it.meta.tags = tg.value.split(",").map((x) => x.trim()).filter(Boolean)));
+        const copy = document.createElement("button"); copy.className = "small"; copy.textContent = "태그 복사";
+        copy.addEventListener("click", () => copyText(tg.value, tg));
+        const en = document.createElement("p"); en.className = "hint"; en.textContent = (it.meta.title_en || "") + (it.meta.tags_en?.length ? " · " + it.meta.tags_en.slice(0, 6).join(", ") + "…" : "");
+        meta.append(t, tg, copy, en);
+      } else {
+        const p = document.createElement("p"); p.className = "hint"; p.textContent = "제목·태그 없음"; meta.append(p);
+      }
+
+      const acts = document.createElement("div"); acts.className = "item-actions";
+      const save = document.createElement("button"); save.className = "small"; save.textContent = S.fmt === "jpg" ? "JPG 저장" : "PNG 저장";
+      save.addEventListener("click", async () => {
+        const f = S.fmt === "jpg" ? "jpg" : "png";
+        const r = renderOut(it, S.size, f);
+        await saveBlob(it.name + "." + f, await toBlob(r.canvas, f === "jpg" ? "image/jpeg" : "image/png", 0.95));
+      });
+      const inc = document.createElement("button"); inc.className = "small"; inc.textContent = it.include ? "ZIP에서 빼기" : "ZIP에 넣기";
+      inc.addEventListener("click", () => { it.include = !it.include; renderItems(); });
+      const split = document.createElement("button"); split.className = "small"; split.textContent = "다시 나누기";
+      split.hidden = it.labels.size < 2;
+      split.addEventListener("click", () => splitItem(it));
+      acts.append(save, inc, split);
+
+      card.append(head, thumb, name, badges, meta, acts);
+      box.append(card);
+    });
+    updateButtons();
+  }
+
+  function updateButtons() {
+    const sel = items.filter((i) => i.sel);
+    const sameSrc = sel.length > 1 && sel.every((i) => i.srcId === sel[0].srcId);
+    $("#mergeBtn").disabled = !sameSrc;
+    $("#clearSelBtn").disabled = !sel.length;
+    const n = items.filter((i) => i.include).length;
+    $("#zipBtn").disabled = !n || !window.JSZip;
+    $("#zipBtn").textContent = n ? "전체 저장 (ZIP · " + n + "개)" : "전체 저장 (ZIP)";
+    const aiOk = !!(sample && imgLimits);
+    $("#aiBtn").disabled = !aiOk || !n || aiBusy;
+    $("#aiNote").textContent = aiOk ? "AI 태그는 내 Claude 사용량을 써요. 처음 누를 때 허용할지 물어봐요."
+      : "AI 제목·태그는 claude.ai에서 열었을 때만 쓸 수 있어요.";
+  }
+
+  function copyText(text, fallbackEl) {
+    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => toast("복사했어요"), () => { fallbackEl.select(); toast("선택해 뒀어요. 복사해 주세요"); });
+    else { fallbackEl.select(); toast("선택해 뒀어요. 복사해 주세요"); }
+  }
+
+  // ---------- merge / split ----------
+  $("#mergeBtn").addEventListener("click", () => {
+    const sel = items.filter((i) => i.sel);
+    if (sel.length < 2) return;
+    const src = sources.find((s) => s.id === sel[0].srcId);
+    const labels = new Set(sel.flatMap((i) => [...i.labels]));
+    const cr = cropItem(src, labels);
+    if (!cr) return;
+    const first = sel[0];
+    first.labels = labels; first.crop = cr.canvas; first.box = cr.box; first.sel = false; first.meta = null;
+    items = items.filter((i) => !i.sel || i === first);
+    renderSources(); renderItems();
+    toast(sel.length + "개를 하나로 합쳤어요");
+  });
+  $("#clearSelBtn").addEventListener("click", () => { items.forEach((i) => (i.sel = false)); renderItems(); });
+  function splitItem(it) {
+    const src = sources.find((s) => s.id === it.srcId);
+    const at = items.indexOf(it);
+    const parts = [...it.labels].map((id) => { const cr = cropItem(src, new Set([id])); return cr && { id: uid++, srcId: it.srcId, labels: new Set([id]), crop: cr.canvas, box: cr.box, name: "", include: true, sel: false, meta: null }; }).filter(Boolean);
+    items.splice(at, 1, ...parts);
+    items.forEach((x, i) => { if (!x.name) x.name = S.set + "_" + String(i + 1).padStart(2, "0"); });
+    renderSources(); renderItems();
+  }
+
+  // ---------- ZIP ----------
+  $("#zipBtn").addEventListener("click", async () => {
+    const btn = $("#zipBtn"); btn.disabled = true; btn.textContent = "만드는 중…";
+    try {
+      const zip = new JSZip();
+      const rows = [["파일", "제목", "태그", "title_en", "tags_en"]];
+      const used = new Set();
+      for (const it of items.filter((i) => i.include)) {
+        let base = it.name.replace(/[\\/:*?"<>|]/g, "_"), k = 2;
+        while (used.has(base)) base = it.name + "_" + k++;
+        used.add(base);
+        const fmts = S.fmt === "both" ? ["png", "jpg"] : [S.fmt];
+        for (const f of fmts) {
+          const r = renderOut(it, S.size, f);
+          zip.file(base + "." + f, await toBlob(r.canvas, f === "jpg" ? "image/jpeg" : "image/png", 0.95));
+        }
+        const m = it.meta || {};
+        rows.push([base, m.title || "", (m.tags || []).join(", "), m.title_en || "", (m.tags_en || []).join(", ")]);
+      }
+      const csv = "﻿" + rows.map((r) => r.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(",")).join("\r\n");
+      zip.file("제목_태그.csv", csv);
+      const blob = await zip.generateAsync({ type: "blob" });
+      await saveBlob((S.set || "소품") + ".zip", blob);
+    } catch (e) { toast("ZIP을 만들지 못했어요"); }
+    updateButtons();
+  });
+
+  // ---------- AI titles & tags ----------
+  let aiBusy = false;
+  $("#aiBtn").addEventListener("click", async () => {
+    if (!sample || !imgLimits) return;
+    const targets = items.filter((i) => i.include);
+    if (!targets.length) return;
+    aiBusy = true; updateButtons();
+    const btn = $("#aiBtn");
+    const per = Math.max(1, Math.min(imgLimits.maxCount || 4, 8));
+    try {
+      for (let start = 0; start < targets.length; start += per) {
+        const batch = targets.slice(start, start + per);
+        btn.textContent = "AI가 보는 중… " + Math.min(start + per, targets.length) + "/" + targets.length;
+        const images = [];
+        for (const it of batch) images.push(await toBlob(renderOut(it, 512, "jpg").canvas, "image/jpeg", 0.85));
+        const prompt =
+          "미리캔버스 디자인허브에 올릴 손그림(파스텔 색연필) 디자인 요소의 메타데이터를 만들어 줘.\n" +
+          "세트 주제: " + (S.set || "없음") + "\n" +
+          "이미지 " + batch.length + "장이 순서대로 첨부돼 있어. 이미지마다 아래 항목을 만들어.\n" +
+          "- title: 한국어 제목, 무엇인지 바로 알 수 있게 15자 이내\n" +
+          "- tags: 한국어 검색 태그 15~20개. 사물 이름과 동의어, 쓰임새(포스터, 카드뉴스, 안내문, 초대장), 계절·행사, 스타일(손그림, 색연필, 파스텔, 귀여운). 사람들이 실제로 검색할 단어, 중복 없이\n" +
+          "- title_en: 영어 제목\n- tags_en: 영어 키워드 15개\n" +
+          "답은 이미지 순서대로 JSON 배열만: [{\"title\":\"\",\"tags\":[],\"title_en\":\"\",\"tags_en\":[]}]";
+        const res = await sample.json(prompt, { images, modelTier: "default" });
+        const arr = Array.isArray(res) ? res : [];
+        batch.forEach((it, i) => {
+          const m = arr[i];
+          if (m && typeof m === "object") it.meta = {
+            title: String(m.title || ""), tags: Array.isArray(m.tags) ? m.tags.map(String) : [],
+            title_en: String(m.title_en || ""), tags_en: Array.isArray(m.tags_en) ? m.tags_en.map(String) : [],
+          };
+        });
+        renderItems();
+      }
+      toast("제목과 태그를 만들었어요");
+    } catch (e) {
+      const c = e && e.code;
+      toast(c === "not_granted" ? "AI 사용을 허용하지 않아서 멈췄어요" : c === "rate_limited" ? "요청이 많아요. 잠시 뒤에 다시 눌러주세요" : c === "cancelled" ? "멈췄어요" : "태그를 만들지 못했어요 (" + c + ")");
+    }
+    aiBusy = false; btn.textContent = "AI로 제목·태그 만들기"; updateButtons();
+  });
+
+  // ---------- example drawing ----------
+  function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  function makeExample() {
+    const W = 1800, H = 900, R = rng(7);
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#f8f4ec"; ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 9000; i++) { ctx.fillStyle = R() < 0.5 ? "rgba(0,0,0,0.025)" : "rgba(255,255,255,0.4)"; ctx.fillRect(R() * W, R() * H, 2, 2); }
+
+    const crayon = (path, color, bbox, rule) => {
+      const [x0, y0, x1, y1] = bbox;
+      ctx.save(); ctx.clip(path, rule || "nonzero");
+      ctx.globalAlpha = 0.5; ctx.fillStyle = color; ctx.fill(path, rule || "nonzero");
+      ctx.strokeStyle = color; ctx.lineCap = "round"; ctx.globalAlpha = 0.32;
+      const nStroke = ((x1 - x0) * (y1 - y0)) / 45;
+      for (let i = 0; i < nStroke; i++) {
+        const x = x0 + R() * (x1 - x0), y = y0 + R() * (y1 - y0), a = -0.75 + R() * 0.3, len = 14 + R() * 26;
+        ctx.lineWidth = 2 + R() * 3; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len); ctx.stroke();
+      }
+      ctx.globalCompositeOperation = "destination-out"; ctx.globalAlpha = 0.5;
+      for (let i = 0; i < nStroke / 3; i++) ctx.fillRect(x0 + R() * (x1 - x0), y0 + R() * (y1 - y0), 1.5, 1.5);
+      ctx.restore();
+    };
+    const line = (pts, color, width) => {
+      ctx.save(); ctx.strokeStyle = color; ctx.lineCap = "round"; ctx.lineJoin = "round";
+      for (let k = 0; k < 5; k++) {
+        ctx.globalAlpha = 0.35; ctx.lineWidth = width * (0.6 + R() * 0.5); ctx.beginPath();
+        pts.forEach(([x, y], i) => { const jx = x + (R() - 0.5) * 3, jy = y + (R() - 0.5) * 3; i ? ctx.lineTo(jx, jy) : ctx.moveTo(jx, jy); });
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+    const rr = (x, y, w, h, r) => { const p = new Path2D(); p.moveTo(x + r, y); p.arcTo(x + w, y, x + w, y + h, r); p.arcTo(x + w, y + h, x, y + h, r); p.arcTo(x, y + h, x, y, r); p.arcTo(x, y, x + w, y, r); p.closePath(); return p; };
+
+    // 1. 코코아 머그
+    const handle = new Path2D(); handle.arc(455, 470, 62, 0, Math.PI * 2); handle.arc(455, 470, 34, 0, Math.PI * 2);
+    crayon(handle, "#f2b8c6", [390, 405, 520, 535], "evenodd");
+    crayon(rr(190, 340, 260, 280, 34), "#f2b8c6", [190, 340, 450, 620]);
+    const cocoa = new Path2D(); cocoa.ellipse(320, 350, 118, 26, 0, 0, Math.PI * 2);
+    crayon(cocoa, "#c9a089", [200, 320, 440, 380]);
+    crayon(rr(255, 300, 50, 44, 12), "#f3e3c3", [255, 300, 305, 344]);
+    crayon(rr(318, 292, 50, 44, 12), "#f3e3c3", [318, 292, 368, 336]);
+    line([[275, 290], [265, 260], [281, 230]], "#c9a089", 6); line([[385, 300], [397, 265], [383, 235]], "#c9a089", 6);
+
+    // 2. 벙어리장갑
+    const mit = new Path2D(); mit.ellipse(770, 400, 120, 160, 0, 0, Math.PI * 2); mit.ellipse(655, 430, 52, 88, -0.5, 0, Math.PI * 2);
+    crayon(mit, "#b9d3e8", [600, 240, 890, 560]);
+    crayon(rr(660, 530, 230, 90, 26), "#f3e3c3", [660, 530, 890, 620]);
+    line([[700, 330], [740, 300], [780, 330], [820, 300]], "#f2b8c6", 7);
+
+    // 3. 귤 (잎은 살짝 떨어져 있음: '이 거리 안이면 한 소품' 확인용)
+    const org = new Path2D(); org.arc(1150, 470, 130, 0, Math.PI * 2);
+    crayon(org, "#f5b47a", [1020, 340, 1280, 600]);
+    const leaf = new Path2D(); leaf.ellipse(1205, 318, 46, 20, -0.5, 0, Math.PI * 2);
+    crayon(leaf, "#a9cf8f", [1155, 290, 1255, 346]);
+
+    // 4. 눈 결정 (선으로만)
+    const cx = 1540, cy = 450, r = 140;
+    for (let k = 0; k < 6; k++) {
+      const a = (k * Math.PI) / 3, ex = cx + Math.cos(a) * r, ey = cy + Math.sin(a) * r;
+      line([[cx, cy], [ex, ey]], "#9dbbe6", 9);
+      const mx = cx + Math.cos(a) * r * 0.62, my = cy + Math.sin(a) * r * 0.62;
+      line([[mx + Math.cos(a + 0.8) * 42, my + Math.sin(a + 0.8) * 42], [mx, my], [mx + Math.cos(a - 0.8) * 42, my + Math.sin(a - 0.8) * 42]], "#9dbbe6", 7);
+    }
+    return c;
+  }
+
+  sources.push(makeSource(makeExample(), "예시 · 겨울간식 낙서", true));
+  processAll();
+  if (!window.JSZip) toast("ZIP 도구를 불러오지 못했어요. 낱개 저장은 돼요");
+})();
+</script>
