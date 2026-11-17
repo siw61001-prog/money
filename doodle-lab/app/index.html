@@ -108,13 +108,17 @@ button.small { font-size: 13px; padding: 3px 10px; }
 
 .concept-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
 .concept-tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.concept { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px 24px; }
-@media (max-width: 700px) { .concept { grid-template-columns: 1fr; } }
-.concept .why { font-size: 14px; color: var(--ink-soft); }
-.concept-items { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 2px 12px; font-size: 14px; }
-.concept-items label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
-.concept-items input { accent-color: var(--accent); }
-.concept-items input:checked + span { text-decoration: line-through; color: var(--ink-soft); }
+.concept { display: grid; gap: 12px; }
+.concept-head { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; justify-content: space-between; }
+.concept .why { font-size: 14px; color: var(--ink-soft); max-width: 60ch; }
+.drafts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
+.drafts li { display: grid; gap: 4px; font-size: 13px; }
+.drafts .draft-img { aspect-ratio: 1 / 1; border-radius: 10px; background: var(--paper); border: 1px solid var(--line); display: grid; place-items: center; color: var(--ink-soft); font-size: 12px; overflow: hidden; }
+.drafts .draft-img img { width: 100%; height: 100%; display: block; }
+.drafts label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.drafts input { accent-color: var(--accent); }
+.drafts li.done .draft-img { opacity: .4; }
+.drafts li.done span { text-decoration: line-through; color: var(--ink-soft); }
 .palette { display: flex; flex-wrap: wrap; gap: 8px; }
 .palette div { display: grid; justify-items: center; gap: 2px; font-size: 11px; color: var(--ink-soft); }
 .palette i { width: 40px; height: 28px; border-radius: 40% 55% 45% 50% / 55% 45% 55% 45%; display: block; background: var(--c); }
@@ -251,6 +255,7 @@ button.small { font-size: 13px; padding: 3px 10px; }
     sample = s;
     if (s) { try { imgLimits = (await s.limits()).images || null; } catch { imgLimits = null; } }
     updateButtons();
+    renderConcept();
   });
 
   const toastEl = $("#toast");
@@ -822,11 +827,39 @@ button.small { font-size: 13px; padding: 3px 10px; }
     return c;
   }
 
+  // 겨울 간식 초안 (viewBox 0 0 200 200, 외곽선 없이 색면으로)
+  const WINTER_DRAFTS = Object.assign([
+    // 붕어빵 두 마리
+    `<path d="M58 78c0-22 40-30 70-16l26-16-4 30 4 30-26-14c-30 14-70 8-70-14z" fill="#e8c9a0"/><path d="M30 118c0-24 44-33 76-18l28-17-4 33 4 33-28-15c-32 15-76 8-76-16z" fill="#d9ad7c"/><circle cx="50" cy="112" r="4" fill="#8a6a55"/><path d="M70 112q6 8 12 0M86 106q6 8 12 0M86 122q6 8 12 0M102 114q6 8 12 0" fill="none" stroke="#b98a5e" stroke-width="3" stroke-linecap="round"/><path d="M120 104l10-6M120 126l10 6" stroke="#b98a5e" stroke-width="3" stroke-linecap="round"/>`,
+    // 군고구마 종이봉투
+    `<ellipse cx="82" cy="62" rx="16" ry="34" transform="rotate(-18 82 62)" fill="#c98f8a"/><ellipse cx="122" cy="58" rx="15" ry="32" transform="rotate(16 122 58)" fill="#b77a78"/><path d="M114 40c8-6 18-2 18 8-6 6-14 6-18-8z" fill="#f6d77f"/><path d="M52 84h96l-10 92H62z" fill="#f3e3c3"/><path d="M52 84l12 10 12-10 12 10 12-10 12 10 12-10 12 10 12-10" fill="none" stroke="#e2cfa8" stroke-width="5" stroke-linejoin="round"/><path d="M80 130h40" stroke="#e2cfa8" stroke-width="5" stroke-linecap="round"/>`,
+    // 호빵
+    `<ellipse cx="100" cy="146" rx="70" ry="12" fill="#efe0c8"/><path d="M34 144c0-52 30-80 66-80s66 28 66 80z" fill="#f7ecdc"/><path d="M100 66c4 10 4 18-2 26" fill="none" stroke="#e8d6bb" stroke-width="5" stroke-linecap="round"/><circle cx="100" cy="112" r="7" fill="#f2b8c6"/><path d="M76 48q-6-10 0-20M100 44q-6-10 0-20M124 48q-6-10 0-20" fill="none" stroke="#d8d2cc" stroke-width="4" stroke-linecap="round"/>`,
+    // 귤 바구니
+    `<circle cx="72" cy="88" r="26" fill="#f5b47a"/><circle cx="118" cy="82" r="28" fill="#f7c08c"/><circle cx="96" cy="66" r="24" fill="#f5b47a"/><path d="M96 42c8-10 22-8 24 0-8 6-18 6-24 0z" fill="#a9cf8f"/><path d="M36 104h128l-16 66H52z" fill="#c9a089"/><path d="M48 124h104M52 144h96M60 104v66M84 104v66M108 104v66M132 104v66" stroke="#b38c74" stroke-width="4"/><rect x="30" y="98" width="140" height="12" rx="6" fill="#b38c74"/>`,
+    // 코코아 머그와 마시멜로
+    `<path d="M140 84a26 26 0 1 1 0 52v-14a12 12 0 1 0 0-24z" fill="#f2b8c6"/><rect x="44" y="72" width="100" height="100" rx="16" fill="#f2b8c6"/><ellipse cx="94" cy="76" rx="46" ry="11" fill="#c9a089"/><rect x="66" y="58" width="20" height="18" rx="5" fill="#f7efe2"/><rect x="92" y="54" width="20" height="18" rx="5" fill="#f7efe2"/><path d="M74 44q-6-10 0-20M108 40q-6-10 0-20" fill="none" stroke="#d8cfc6" stroke-width="4" stroke-linecap="round"/><path d="M70 120q24 16 48 0" fill="none" stroke="#f7d4dd" stroke-width="6" stroke-linecap="round"/>`,
+    // 벙어리장갑 한 쌍
+    `<path d="M58 40q12-6 22 6" fill="none" stroke="#d9cbb0" stroke-width="3"/><path d="M80 46c-30-14-56 6-50 40l4 36h48l6-34c14-6 14-22 2-24z" fill="#b9d3e8"/><rect x="30" y="118" width="56" height="26" rx="8" fill="#f3e3c3"/><path d="M120 46c30-14 56 6 50 40l-4 36h-48l-6-34c-14-6-14-22-2-24z" fill="#f2b8c6"/><rect x="114" y="118" width="56" height="26" rx="8" fill="#f3e3c3"/><path d="M80 46q20-26 40 0" fill="none" stroke="#d9cbb0" stroke-width="3"/><path d="M44 84l10 8 10-8 10 8M128 84l10 8 10-8 10 8" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity=".8"/>`,
+    // 방울 털모자
+    `<circle cx="100" cy="42" r="20" fill="#f3e3c3"/><path d="M42 140c0-50 26-84 58-84s58 34 58 84z" fill="#f2b8c6"/><path d="M80 66v74M100 58v82M120 66v74" stroke="#f7d0da" stroke-width="5"/><rect x="34" y="134" width="132" height="30" rx="12" fill="#f3e3c3"/><path d="M50 140v18M66 140v18M82 140v18M98 140v18M114 140v18M130 140v18M146 140v18" stroke="#e8d6b4" stroke-width="4"/>`,
+    // 줄무늬 목도리
+    `<path d="M40 60q60-24 120 0v26q-60-24-120 0z" fill="#b9d3e8"/><path d="M118 74h28v90h-28z" fill="#b9d3e8"/><path d="M118 96h28M118 118h28M118 140h28" stroke="#f3e3c3" stroke-width="10"/><path d="M60 54v28M86 48v28M112 48v28M138 52v28" stroke="#f3e3c3" stroke-width="8"/><path d="M122 164v18M130 164v18M138 164v18M146 164v14" stroke="#b9d3e8" stroke-width="4" stroke-linecap="round"/>`,
+    // 털실 뭉치와 뜨개바늘
+    `<path d="M64 150c20 20 60 24 90 10" fill="none" stroke="#f2b8c6" stroke-width="4" stroke-linecap="round"/><path d="M40 40l110 120M160 40L50 160" stroke="#c9a089" stroke-width="6" stroke-linecap="round"/><circle cx="40" cy="40" r="8" fill="#f5b47a"/><circle cx="160" cy="40" r="8" fill="#f5b47a"/><circle cx="96" cy="112" r="46" fill="#f2b8c6"/><path d="M60 92q36 10 70-6M54 114q42 14 84-8M62 138q36 8 66-10M84 70q-14 40 0 86" fill="none" stroke="#f7d0da" stroke-width="5" stroke-linecap="round"/>`,
+    // 김 나는 찻주전자
+    `<path d="M150 104c18-6 26-26 24-36-12 4-22 16-30 26z" fill="#b9d3e8"/><path d="M48 96a22 22 0 1 0 0 44" fill="none" stroke="#b9d3e8" stroke-width="10"/><ellipse cx="100" cy="122" rx="56" ry="46" fill="#b9d3e8"/><ellipse cx="100" cy="80" rx="34" ry="10" fill="#a6c5df"/><circle cx="100" cy="66" r="9" fill="#f3e3c3"/><path d="M76 124q24 12 48 0" fill="none" stroke="#f3e3c3" stroke-width="6" stroke-linecap="round"/><path d="M170 58q-6-10 2-20M182 64q-6-10 2-20" fill="none" stroke="#d8d2cc" stroke-width="4" stroke-linecap="round"/>`,
+    // 눈 결정 3종
+    `<g stroke="#9dbbe6" stroke-width="5" stroke-linecap="round" fill="none"><path d="M56 34v52M33 47l46 26M33 73l46-26M50 40l6 6 6-6M50 80l6-6 6 6"/><path d="M144 70v52M121 83l46 26M121 109l46-26"/><circle cx="144" cy="96" r="8" fill="#b9d3e8" stroke="none"/><path d="M70 128v48M46 152h48M53 135l34 34M53 169l34-34"/></g><circle cx="70" cy="152" r="6" fill="#b9d3e8"/>`,
+    // 작은 장작 난로
+    `<rect x="112" y="18" width="18" height="50" rx="4" fill="#b5a49a"/><rect x="50" y="62" width="100" height="96" rx="18" fill="#c9a089"/><rect x="68" y="84" width="64" height="48" rx="12" fill="#8f6f60"/><path d="M100 128c-18 0-22-18-8-30 0 10 6 12 8 4 4-10 10-14 10-22 12 12 16 48-10 48z" fill="#f5b47a"/><path d="M100 128c-8 0-10-8-4-14 2 6 6 4 6 0 6 4 6 14-2 14z" fill="#f6d77f"/><rect x="58" y="158" width="12" height="16" rx="3" fill="#b5a49a"/><rect x="130" y="158" width="12" height="16" rx="3" fill="#b5a49a"/><rect x="150" y="150" width="40" height="14" rx="7" fill="#d9ad7c"/><rect x="156" y="136" width="34" height="14" rx="7" fill="#c9a089"/>`,
+  ], { handmade: true });
+
   // ---------- concepts (from research/report.json) ----------
   const CONCEPTS = [
     { key: "winter", label: "겨울 간식", set: "겨울간식", when: "지금 바로 · 2월까지", why: "\"겨울\" 74위, 손그림 15%. 상위는 파란 눈 풍경·눈사람 위주라 따뜻한 색 간식·소품이 비어 있어요.",
       items: ["붕어빵 두 마리", "군고구마 종이봉투", "호빵", "귤 바구니", "코코아 머그와 마시멜로", "벙어리장갑 한 쌍", "방울 털모자", "줄무늬 목도리", "털실 뭉치와 뜨개바늘", "김 나는 찻주전자", "눈 결정 3종", "작은 장작 난로"],
-      palette: [["코코아", "#c9a089"], ["크림", "#f3e3c3"], ["귤", "#f5b47a"], ["딸기우유", "#f2b8c6"], ["겨울하늘", "#b9d3e8"]] },
+      palette: [["코코아", "#c9a089"], ["크림", "#f3e3c3"], ["귤", "#f5b47a"], ["딸기우유", "#f2b8c6"], ["겨울하늘", "#b9d3e8"]], drafts: WINTER_DRAFTS },
     { key: "seollal", label: "설날 소품", set: "설날소품", when: "12월 중순까지 올리기", why: "\"한복\" 75위인데 손그림 2%. 한복 입은 아이 캐릭터가 거의 전부라 사물만 그린 세트가 비어 있어요.",
       items: ["복주머니", "떡국 한 그릇", "윷 네 개와 말", "방패연과 얼레", "옷걸이에 걸린 색동저고리", "꽃신 한 켤레", "무늬만 있는 세뱃돈 봉투", "매화 가지", "까치", "소나무 가지", "곶감 꼬치", "약과와 한과 접시"],
       palette: [["연분홍", "#f4b6b8"], ["연두", "#c9dfa6"], ["하늘", "#b8d6ee"], ["개나리", "#f7d88b"], ["팥", "#c98f8a"]] },
@@ -845,6 +878,68 @@ button.small { font-size: 13px; padding: 3px 10px; }
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
   };
   let conceptKey = store.get("dl.concept", "winter");
+  function svgDoc(inner) { return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">' + inner + "</svg>"; }
+  function svgUrl(inner) { return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgDoc(inner)); }
+  // AI가 만든 SVG는 그리기 요소만 남긴다 (img로만 표시하므로 스크립트는 어차피 실행되지 않음)
+  function cleanSvg(inner) {
+    const doc = new DOMParser().parseFromString(svgDoc(String(inner || "")), "image/svg+xml");
+    if (doc.querySelector("parsererror")) return null;
+    const ok = new Set(["svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline", "polygon"]);
+    doc.querySelectorAll("*").forEach((el) => {
+      if (!ok.has(el.localName)) { el.remove(); return; }
+      [...el.attributes].forEach((a) => { if (/^on|href|style/i.test(a.name)) el.removeAttribute(a.name); });
+    });
+    return doc.documentElement.innerHTML;
+  }
+  const draftsFor = (c) => c.drafts || store.get("dl.drafts." + c.key, null);
+  function loadImgUrl(url) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }); }
+
+  let draftBusy = false;
+  async function aiDrafts(c) {
+    if (!sample) return;
+    draftBusy = true; renderConcept();
+    try {
+      const prompt =
+        "귀여운 파스텔 색연필 일러스트를 그리기 전에 참고할 밑그림(초안)을 SVG로 그려 줘.\n" +
+        "세트 주제: " + c.label + "\n소품 목록(이 순서대로): " + c.items.join(", ") + "\n" +
+        "규칙:\n- 소품마다 viewBox 0 0 200 200 안에 들어갈 SVG 내용만 (바깥 <svg> 태그 없이)\n" +
+        "- path, circle, ellipse, rect, polygon, line, g 만 사용. 텍스트·이미지·그라데이션·필터 없음\n" +
+        "- 검은 외곽선 없이 색면 위주. 디테일은 같은 계열의 조금 진한 색 선으로만\n" +
+        "- 색은 이 팔레트 안에서: " + c.palette.map((p) => p[1]).join(", ") + " (조금 밝거나 어두운 변형은 괜찮음)\n" +
+        "- 사람·얼굴·글자 없음. 단순하고 한눈에 알아볼 수 있게, 가장자리에 여백 15 이상\n" +
+        "답은 소품 순서대로 문자열 " + c.items.length + "개짜리 JSON 배열만: [\"<path .../>...\", ...]";
+      const arr = await sample.json(prompt, { modelTier: "default" });
+      if (!Array.isArray(arr)) throw { code: "invalid_json" };
+      const out = c.items.map((_, i) => cleanSvg(arr[i]) || "");
+      store.set("dl.drafts." + c.key, out);
+      c.drafts = out;
+      toast("초안을 그렸어요");
+    } catch (e) {
+      const code = e && e.code;
+      toast(code === "not_granted" ? "AI 사용을 허용하지 않아서 멈췄어요" : code === "rate_limited" ? "요청이 많아요. 잠시 뒤에 다시 눌러주세요" : "초안을 그리지 못했어요 (" + code + ")");
+    }
+    draftBusy = false; renderConcept();
+  }
+
+  async function saveSheet(c) {
+    const drafts = draftsFor(c);
+    if (!drafts) return;
+    const cell = 800, cols = 3, rows = Math.ceil(c.items.length / cols);
+    const cv = document.createElement("canvas"); cv.width = cell * cols; cv.height = cell * rows;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, cv.width, cv.height);
+    for (let i = 0; i < c.items.length; i++) {
+      if (!drafts[i]) continue;
+      const x = (i % cols) * cell, y = Math.floor(i / cols) * cell;
+      try {
+        const im = await loadImgUrl(svgUrl(drafts[i]));
+        ctx.globalAlpha = 0.4; ctx.drawImage(im, x + 90, y + 90, cell - 180, cell - 180); ctx.globalAlpha = 1;
+      } catch { /* skip broken draft */ }
+      ctx.fillStyle = "#b8b0a6"; ctx.font = "28px system-ui, sans-serif"; ctx.fillText((i + 1) + ". " + c.items[i], x + 30, y + 50);
+    }
+    await saveBlob(c.set + "_밑그림.png", await toBlob(cv, "image/png"));
+  }
+
   function renderConcept() {
     const tabs = $("#conceptTabs"); tabs.replaceChildren();
     CONCEPTS.forEach((c, i) => {
@@ -856,28 +951,50 @@ button.small { font-size: 13px; padding: 3px 10px; }
     });
     const c = CONCEPTS.find((x) => x.key === conceptKey) || CONCEPTS[0];
     const done = store.get("dl.done." + c.key, []);
+    const drafts = draftsFor(c);
     const box = $("#concept"); box.replaceChildren();
-    const left = document.createElement("div"); left.style.cssText = "display:grid;gap:8px;min-width:0";
-    const t = document.createElement("p"); t.innerHTML = "<b></b> <span class=\"chip\"></span>";
-    t.querySelector("b").textContent = "그릴 것 " + c.items.length + "개"; t.querySelector(".chip").textContent = c.when;
-    const ul = document.createElement("ul"); ul.className = "concept-items";
+
+    const head = document.createElement("div"); head.className = "concept-head";
+    const why = document.createElement("p"); why.className = "why"; why.textContent = c.when + " · " + c.why;
+    const pal = document.createElement("div"); pal.className = "palette";
+    c.palette.forEach(([n, hex]) => { const d = document.createElement("div"), i = document.createElement("i"); i.style.setProperty("--c", hex); d.append(i, n); pal.append(d); });
+    head.append(why, pal);
+
+    const acts = document.createElement("div"); acts.className = "item-actions";
+    if (drafts) {
+      const sheet = document.createElement("button"); sheet.className = "primary"; sheet.textContent = "밑그림 시트 저장 (12개 한 장)";
+      sheet.addEventListener("click", () => saveSheet(c));
+      acts.append(sheet);
+    }
+    if (!c.drafts || !c.drafts.handmade) {
+      const ai = document.createElement("button");
+      ai.textContent = draftBusy ? "AI가 초안 그리는 중… (1분쯤)" : drafts ? "AI로 초안 다시 그리기" : "AI로 초안 그리기";
+      ai.disabled = draftBusy || !sample;
+      ai.addEventListener("click", () => aiDrafts(c));
+      acts.append(ai);
+    }
+    const tip = document.createElement("p"); tip.className = "hint";
+    tip.textContent = drafts
+      ? "시트를 그림 앱에 밑그림 레이어로 깔고 위 레이어에 그린 뒤, 밑그림을 끄고 내보내서 아래에 올리면 소품별로 잘려요. 초안은 참고용이니 모양은 자유롭게 바꾸세요."
+      : sample ? "버튼을 누르면 AI가 소품 12개의 밑그림을 그려요. 내 Claude 사용량을 써요." : "AI 초안은 claude.ai에서 열었을 때만 그릴 수 있어요.";
+
+    const grid = document.createElement("ul"); grid.className = "drafts";
     c.items.forEach((name, i) => {
-      const li = document.createElement("li"), lb = document.createElement("label"), cb = document.createElement("input"), sp = document.createElement("span");
+      const li = document.createElement("li");
+      const fig = document.createElement("div"); fig.className = "draft-img";
+      if (drafts && drafts[i]) { const im = document.createElement("img"); im.src = svgUrl(drafts[i]); im.alt = name + " 초안"; fig.append(im); }
+      else { fig.textContent = "초안 없음"; }
+      const lb = document.createElement("label"), cb = document.createElement("input"), sp = document.createElement("span");
       cb.type = "checkbox"; cb.id = "ci-" + c.key + "-" + i; cb.checked = done.includes(i); sp.textContent = name;
       cb.addEventListener("change", () => {
         const cur = new Set(store.get("dl.done." + c.key, []));
         cb.checked ? cur.add(i) : cur.delete(i); store.set("dl.done." + c.key, [...cur]);
+        li.classList.toggle("done", cb.checked);
       });
-      lb.append(cb, sp); li.append(lb); ul.append(li);
+      li.classList.toggle("done", cb.checked);
+      lb.append(cb, sp); li.append(fig, lb); grid.append(li);
     });
-    left.append(t, ul);
-    const right = document.createElement("div"); right.style.cssText = "display:grid;gap:10px;align-content:start;min-width:0";
-    const why = document.createElement("p"); why.className = "why"; why.textContent = c.why;
-    const pal = document.createElement("div"); pal.className = "palette";
-    c.palette.forEach(([n, hex]) => { const d = document.createElement("div"), i = document.createElement("i"); i.style.setProperty("--c", hex); d.append(i, n); pal.append(d); });
-    const rule = document.createElement("p"); rule.className = "hint"; rule.textContent = "사람 없이 사물만 · 검은 외곽선 없이 · 글자 없이 · 이 팔레트 안에서만 칠하기";
-    right.append(why, pal, rule);
-    box.append(left, right);
+    box.append(head, acts, tip, grid);
   }
   function selectConcept(key) {
     conceptKey = key; store.set("dl.concept", key);
