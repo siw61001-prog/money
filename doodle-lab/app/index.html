@@ -835,7 +835,7 @@ button.small { font-size: 13px; padding: 3px 10px; }
   // 겨울 간식 초안 (viewBox 0 0 200 200, 외곽선 없이 색면으로)
   const WINTER_DRAFTS = Object.assign([
     // 붕어빵 두 마리
-    `<path d="M58 78c0-22 40-30 70-16l26-16-4 30 4 30-26-14c-30 14-70 8-70-14z" fill="#f5b324"/><path d="M30 118c0-24 44-33 76-18l28-17-4 33 4 33-28-15c-32 15-76 8-76-16z" fill="#e89a1c"/><circle cx="50" cy="112" r="4" fill="#6e3326"/><path d="M70 112q6 8 12 0M86 106q6 8 12 0M86 122q6 8 12 0M102 114q6 8 12 0" fill="none" stroke="#a8560f" stroke-width="3" stroke-linecap="round"/><path d="M120 104l10-6M120 126l10 6" stroke="#a8560f" stroke-width="3" stroke-linecap="round"/>`,
+    `<g transform="translate(42 6) scale(.74) rotate(-8 100 100)"><path d="M30 100C30 66 70 52 112 60C130 63 142 72 150 82L176 58C183 76 183 92 172 100C183 108 183 124 176 142L150 118C142 128 130 137 112 140C70 148 30 134 30 100z" fill="#f7cf6a"/><path d="M86 62Q98 42 118 58z" fill="#e3a93a"/><path d="M96 138Q108 156 122 138z" fill="#e3a93a"/><path d="M66 72Q56 100 66 128" fill="none" stroke="#e3a93a" stroke-width="5" stroke-linecap="round"/><circle cx="50" cy="92" r="6" fill="#6e3326"/><path d="M34 110q6 4 12 0" fill="none" stroke="#6e3326" stroke-width="4" stroke-linecap="round"/><path d="M80 86q8 10 16 0M100 86q8 10 16 0M120 86q8 10 16 0M90 106q8 10 16 0M110 106q8 10 16 0M130 104q8 10 16 0" fill="none" stroke="#e3a93a" stroke-width="5" stroke-linecap="round"/><path d="M160 90l12-6M160 110l12 6" stroke="#e3a93a" stroke-width="5" stroke-linecap="round"/></g><g transform="translate(-2 52) scale(.78)"><path d="M30 100C30 66 70 52 112 60C130 63 142 72 150 82L176 58C183 76 183 92 172 100C183 108 183 124 176 142L150 118C142 128 130 137 112 140C70 148 30 134 30 100z" fill="#f5b324"/><path d="M86 62Q98 42 118 58z" fill="#d9800f"/><path d="M96 138Q108 156 122 138z" fill="#d9800f"/><path d="M66 72Q56 100 66 128" fill="none" stroke="#d9800f" stroke-width="5" stroke-linecap="round"/><circle cx="50" cy="92" r="6" fill="#6e3326"/><path d="M34 110q6 4 12 0" fill="none" stroke="#6e3326" stroke-width="4" stroke-linecap="round"/><path d="M80 86q8 10 16 0M100 86q8 10 16 0M120 86q8 10 16 0M90 106q8 10 16 0M110 106q8 10 16 0M130 104q8 10 16 0" fill="none" stroke="#d9800f" stroke-width="5" stroke-linecap="round"/><path d="M160 90l12-6M160 110l12 6" stroke="#d9800f" stroke-width="5" stroke-linecap="round"/></g>`,
     // 군고구마 종이봉투
     `<ellipse cx="82" cy="62" rx="16" ry="34" transform="rotate(-18 82 62)" fill="#a8456e"/><ellipse cx="122" cy="58" rx="15" ry="32" transform="rotate(16 122 58)" fill="#8f3a5e"/><path d="M114 40c8-6 18-2 18 8-6 6-14 6-18-8z" fill="#f5b324"/><path d="M52 84h96l-10 92H62z" fill="#f7e6c4"/><path d="M52 84l12 10 12-10 12 10 12-10 12 10 12-10 12 10 12-10" fill="none" stroke="#e3c48e" stroke-width="5" stroke-linejoin="round"/><path d="M80 130h40" stroke="#e3c48e" stroke-width="5" stroke-linecap="round"/>`,
     // 호빵
@@ -912,13 +912,14 @@ button.small { font-size: 13px; padding: 3px 10px; }
       const prompt =
         "삐뚤빼뚤한 플랫 일러스트(종이를 오려 붙인 듯한 색면, 외곽선 없음, 일부러 비대칭이고 통통한 모양, 진한 레트로 색)를 그리기 전에 참고할 밑그림(초안)을 SVG로 그려 줘.\n" +
         "세트 주제: " + c.label + "\n소품 목록(이 순서대로): " + c.items.join(", ") + "\n" +
+        DRAW_RULES + STYLE_EXAMPLE() + "\n" +
         "규칙:\n- 소품마다 viewBox 0 0 200 200 안에 들어갈 SVG 내용만 (바깥 <svg> 태그 없이)\n" +
         "- path, circle, ellipse, rect, polygon, line, g 만 사용. 텍스트·이미지·그라데이션·필터 없음\n" +
         "- 외곽선 없이 꽉 찬 색면. 모양은 큼직하고 단순하게, 완벽한 원·대칭은 피하기. 디테일은 다른 색 색면 조각으로\n" +
         "- 색은 이 팔레트 안에서: " + c.palette.map((p) => p[1]).join(", ") + " (조금 밝거나 어두운 변형은 괜찮음)\n" +
         "- 사람·얼굴·글자 없음. 단순하고 한눈에 알아볼 수 있게, 가장자리에 여백 15 이상\n" +
         "답은 소품 순서대로 문자열 " + c.items.length + "개짜리 JSON 배열만: [\"<path .../>...\", ...]";
-      const arr = await sample.json(prompt, { modelTier: "default" });
+      const arr = await sample.json(prompt, { modelTier: "complex" });
       if (!Array.isArray(arr)) throw { code: "invalid_json" };
       const out = c.items.map((_, i) => cleanSvg(arr[i]) || "");
       store.set("dl.drafts2." + c.key, out);
@@ -935,6 +936,14 @@ button.small { font-size: 13px; padding: 3px 10px; }
   const draftAt = (c, i) => store.get("dl.draft2." + c.key + "." + i, null) || (draftsFor(c) || [])[i] || null;
   const pickKey = (c) => "dl.pick." + c.key;
   let oneBusy = null;
+  // AI에게 보여줄 품질·스타일 예시 (직접 그린 코코아 머그)
+  const STYLE_EXAMPLE = () => WINTER_DRAFTS[4];
+  const DRAW_RULES =
+    "그리는 순서: 먼저 이 사물을 한눈에 알아보게 하는 특징 3~5개를 정해(예: 붕어빵 = 물고기 몸통, 갈라진 꼬리, 지느러미, 눈, 비늘 무늬). " +
+    "그 특징이 실루엣만 봐도 드러나게 큼직하게 그려. 추상적인 덩어리 금지.\n" +
+    "스타일: 외곽선 없이 꽉 찬 색면, 디테일은 다른 색 색면이나 굵은 선(stroke-width 4~6, 같은 계열 진한 색)으로. 일부러 살짝 비대칭. 그라데이션·텍스트·이미지 없음.\n" +
+    "도형: path, circle, ellipse, rect, polygon, line, g 만. viewBox 0 0 200 200 안, 가장자리 여백 15 이상.\n" +
+    "아래는 같은 세트의 좋은 예시야(코코아 머그). 이 정도로 알아보기 쉽고 단순하게:\n";
 
   async function aiDraftOne(c, i) {
     if (!sample || oneBusy) return;
@@ -943,11 +952,12 @@ button.small { font-size: 13px; padding: 3px 10px; }
       const prompt =
         "삐뚤빼뚤한 플랫 일러스트(종이를 오려 붙인 듯한 색면, 외곽선 없음, 일부러 비대칭이고 통통한 모양, 진한 레트로 색)를 그리기 전에 참고할 밑그림(초안)을 SVG로 그려 줘.\n" +
         "소품: " + c.items[i] + " (세트 주제: " + c.label + ")\n" +
+        DRAW_RULES + STYLE_EXAMPLE() + "\n" +
         "규칙: viewBox 0 0 200 200 안에 들어갈 SVG 내용만 (바깥 <svg> 태그 없이). path, circle, ellipse, rect, polygon, line, g 만 사용. " +
         "텍스트·이미지·그라데이션·필터 없음. 외곽선 없이 꽉 찬 색면, 큼직하고 단순하게, 완벽한 원·대칭은 피하고 디테일은 다른 색 색면 조각으로. " +
         "색은 이 팔레트 안에서: " + c.palette.map((p) => p[1]).join(", ") + ". 사람·얼굴·글자 없음. 단순하게, 가장자리 여백 15 이상.\n" +
-        "답은 JSON만: {\"svg\": \"...\"}";
-      const res = await sample.json(prompt, { modelTier: "default", cache: false });
+        "답은 JSON만: {\"features\": [\"특징\"], \"svg\": \"...\"}";
+      const res = await sample.json(prompt, { modelTier: "complex", cache: false });
       const svg = cleanSvg(res && res.svg);
       if (!svg) throw { code: "invalid_json" };
       store.set("dl.draft2." + c.key + "." + i, svg);
@@ -1058,6 +1068,12 @@ button.small { font-size: 13px; padding: 3px 10px; }
       });
       li.classList.toggle("done", cb.checked);
       lb.append(cb, sp); row.append(lb);
+      if (store.get("dl.draft2." + c.key + "." + i, null) && c.drafts && c.drafts[i]) {
+        const back = document.createElement("button"); back.type = "button"; back.className = "redo"; back.textContent = "원래";
+        back.title = "AI가 다시 그리기 전 초안으로"; back.setAttribute("aria-label", name + " 원래 초안으로 되돌리기");
+        back.addEventListener("click", () => { try { localStorage.removeItem("dl.draft2." + c.key + "." + i); } catch {} renderConcept(); });
+        row.append(back);
+      }
       if (sample) {
         const redo = document.createElement("button"); redo.type = "button"; redo.className = "redo"; redo.textContent = "↻";
         redo.title = "AI로 이 초안만 다시 그리기"; redo.setAttribute("aria-label", name + " 초안 다시 그리기");
