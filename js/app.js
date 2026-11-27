@@ -1,5 +1,5 @@
-import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261114c';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261114c';
+import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261127a';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261127a';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -320,7 +320,7 @@ function goalOrder() {
 const goalRank = (key) => { const i = goalOrder().indexOf(key); return i < 0 ? 9999 : i; };
 
 function statusRows(hhCats) {
-  const budgets = householdBudget();
+  const budgets = budgetsOf(S.ym);
   const spent = new Map(hhCats.map(([c, v]) => [c, v.sum]));
   // 상위 분류(식비) 전체에 예산이 있으면 그 하위 분류 줄은 따로 늘어놓지 않는다
   const coveredByParent = (key) => key.includes('|') && budgets[key.split('|')[0]] && !budgets[key];
@@ -329,7 +329,8 @@ function statusRows(hhCats) {
   return names.map((c) => {
     const s = unitSpent(spent, c);
     const b = budgets[c] || 0;
-    return { c, spent: s, budget: b, state: b ? budgetState(s, b, prog.elapsed) : 'none' };
+    const has = c in budgets;
+    return { c, spent: s, budget: b, has, state: !has ? 'none' : b ? budgetState(s, b, prog.elapsed) : (s > 0 ? 'over' : 'ok') };
   }).sort((a, b) => goalRank(a.c) - goalRank(b.c) || b.spent - a.spent);
 }
 
@@ -338,7 +339,7 @@ function statusRows(hhCats) {
 function monthStatusCard(hhCats, monthNo) {
   const rows = statusRows(hhCats);
   const prog = monthProgress(S.ym);
-  const budgeted = rows.filter((r) => r.budget);
+  const budgeted = rows.filter((r) => r.has);
   const tBudget = budgeted.reduce((a, r) => a + r.budget, 0);
   const tSpent = budgeted.reduce((a, r) => a + r.spent, 0);
   const allSpent = rows.reduce((a, r) => a + r.spent, 0);
@@ -489,7 +490,19 @@ function householdBudget() {
   }
   return out;
 }
-const budgetsOf = () => householdBudget();
+// 그달 예산: 기본 예산에 그달의 '예산 대체'를 더하고 뺀다 (옮겨서 0원이 된 항목도 줄은 남긴다)
+const movesOf = (ym = S.ym) => ((S.settings.budgetMoves || {})[ym] || []).filter((m) => m && m.from && m.to && Number(m.amount) > 0);
+function budgetsOf(ym = S.ym) {
+  const out = { ...householdBudget() };
+  for (const m of movesOf(ym)) {
+    if (!(m.from in out) || !(m.to in out)) continue; // 예산에서 빠진 항목은 무시
+    const amt = Math.min(Number(m.amount), out[m.from]);
+    out[m.from] -= amt;
+    out[m.to] += amt;
+  }
+  return out;
+}
+const unitSpentIn = (key, ym = S.ym) => S.tx.filter((t) => unitMatch(key, t) && t.date.startsWith(ym)).reduce((a, t) => a + t.amount, 0);
 // 목표 횟수 (예: 배달음식 월 4회). 금액 목표와 따로 저장한다.
 const householdCounts = () => {
   const c = (S.settings.budgetCounts || {})[SHARED] || {};
@@ -592,17 +605,18 @@ function txGroups(cat, items, { withMonth = false, fallback = null } = {}) {
   return `<ul class="cat-tx">${sorted.map((t) => txLine(t, withMonth)).join('')}</ul>`;
 }
 
-function catItem(cat, rowInner, monthTx) {
+function catItem(cat, rowInner, monthTx, after = '') {
   const open = S.openCats.has(cat);
   const items = open ? monthTx.filter((t) => unitMatch(cat, t)) : [];
   return `<div class="cat-item${open ? ' open' : ''}">
-    <button type="button" class="bar-row cat-toggle" data-cat="${esc(cat)}" aria-expanded="${open}">${rowInner}</button>
+    <button type="button" class="bar-row cat-toggle" data-cat="${esc(cat)}" aria-expanded="${open}">${rowInner}</button>${after}
     ${open ? (items.length ? txGroups(cat, items) : '<ul class="cat-tx"><li class="none">이번 달 이 분류 지출이 없어요.</li></ul>') : ''}
   </div>`;
 }
 
 function budgetCard(cats, catMax, cur, monthNo, monthTx) {
-  const budgets = budgetsOf(S.who);
+  const budgets = budgetsOf(S.ym);
+  const moves = movesOf(S.ym);
   const spentOf = new Map(cats.map(([c, v]) => [c, v.sum]));
   const spentFor = (key) => unitSpent(spentOf, key);
   const budgeted = Object.keys(budgets);
@@ -620,19 +634,27 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
   const rows = budgeted.map((c) => ({ c, spent: spentFor(c), budget: budgets[c] }))
     .sort((a, b) => goalRank(a.c) - goalRank(b.c));
   // 예산 없는 단위 (상위 분류 전체에 예산이 있으면 그 하위 분류는 이미 포함된 것으로 본다)
-  const extra = cats.filter(([c]) => !budgets[c] && !(c.includes('|') && budgets[c.split('|')[0]]));
+  const extra = cats.filter(([c]) => !(c in budgets) && !(c.includes('|') && budgets[c.split('|')[0]]));
   return `<article class="card span-6" id="budget-card">
     <div class="card-head"><h2>${monthNo}월 예산 <small class="muted-tag">통합</small></h2><a class="sub" href="#settings" data-goto-budget>예산 수정</a></div>
     <div class="budget-head" aria-hidden="true"><span></span><span>잔여예산</span></div>
     <div class="bars budget-rows">${rows.map((r) => {
-      const st = budgetState(r.spent, r.budget, prog.elapsed);
+      const st = r.budget ? budgetState(r.spent, r.budget, prog.elapsed) : (r.spent > 0 ? 'over' : 'ok');
       const left = r.budget - r.spent;
+      // 그달 대체: 받은 것 / 보낸 것
+      const ins = moves.filter((m) => m.to === r.c);
+      const outs = moves.filter((m) => m.from === r.c);
+      const note = [...ins.map((m) => `${unitLabel(m.from)}에서 +${won(m.amount)}`), ...outs.map((m) => `${unitLabel(m.to)}로 −${won(m.amount)}`)].join(' · ');
+      // 넘었으면 '다른 예산에서 메우기', 옮긴 적 있으면 '대체 고치기' (줄 버튼 밖에 둔다)
+      const fix = left < 0 ? `<div class="b-fix"><button type="button" class="link-btn" data-move-to="${esc(r.c)}">다른 예산에서 ${won(-left)} 메우기</button></div>`
+        : note ? `<div class="b-fix"><button type="button" class="link-btn muted" data-move-to="${esc(r.c)}">대체 고치기</button></div>` : '';
       return catItem(r.c, `<span class="b-top"><span class="name">${r.c.includes('|') ? `<span class="pfx">${esc(r.c.split('|')[0])} · </span>${esc(r.c.split('|')[1])}` : esc(r.c)}</span>
           <span class="b-spent">${fmt(r.spent)}원</span>
           <span class="b-budget">예산 ${shortWon(r.budget)}</span></span>
-        <span class="bar-track"><span class="${st}" style="width:${Math.min(100, (r.spent / r.budget) * 100)}%"></span>
+        <span class="bar-track"><span class="${st}" style="width:${r.budget ? Math.min(100, (r.spent / r.budget) * 100) : (r.spent ? 100 : 0)}%"></span>
           ${prog.current ? `<i class="pace" style="left:${prog.elapsed * 100}%"></i>` : ''}</span>
-        <span class="b-left ${st}">${left < 0 ? '<small>초과</small>' : st === 'warn' ? '<small>주의</small>' : ''}<b>${won(Math.abs(left))}</b>${countBadge(r.c)}</span>`, monthTx);
+        ${note ? `<span class="b-note">${esc(note)}</span>` : ''}
+        <span class="b-left ${st}">${left < 0 ? '<small>초과</small>' : st === 'warn' ? '<small>주의</small>' : ''}<b>${won(Math.abs(left))}</b>${countBadge(r.c)}</span>`, monthTx, fix);
     }).join('')}</div>
     ${extra.length ? `<h3 class="sub-head">예산 없는 분류</h3>
     <div class="bars budget-rows">${extra.map(([c, v]) => catItem(c, `<span class="b-top"><span class="name">${esc(unitLabel(c))}</span>
@@ -1256,6 +1278,54 @@ function refreshMergeUI() {
   btn.textContent = mergeButtonText();
 }
 
+/* ---------- 예산 대체 ---------- */
+// 넘은 항목에 남은 항목의 예산을 그달만 옮긴다. 내역(실제로 쓴 분류)은 건드리지 않는다.
+const mv = { to: '' };
+function moveState() {
+  const budgets = budgetsOf(S.ym);
+  const keys = Object.keys(budgets);
+  const leftOf = (k) => budgets[k] - unitSpentIn(k);
+  return { budgets, keys, leftOf };
+}
+function renderMove() {
+  const { keys, leftOf } = moveState();
+  const over = Math.max(0, -leftOf(mv.to));
+  const label = esc(unitLabel(mv.to));
+  $('#move-intro').innerHTML = over
+    ? `<b>${label}</b> 예산이 <b class="c-expense">${won(over)}</b> 넘었어요. 남은 예산에서 옮겨 올 수 있어요.`
+    : `<b>${label}</b> 예산이 지금 넘지 않았어요. 필요하면 다른 예산에서 더 옮겨 올 수 있어요.`;
+  const sources = keys.filter((k) => k !== mv.to && leftOf(k) > 0).sort((a, b) => leftOf(b) - leftOf(a));
+  $('#move-sources').innerHTML = sources.length ? sources.map((k) => `<button type="button" class="move-src" data-move-from="${esc(k)}">
+      <span class="ms-name">${esc(unitLabel(k))}</span><span class="ms-left">남음 ${won(leftOf(k))}</span><span class="ms-go">가져오기</span></button>`).join('')
+    + (sources.length > 1 ? `<button type="button" class="btn small" id="move-auto">남은 예산 많은 순으로 자동 채우기</button>` : '')
+    : '<p class="empty">옮겨 올 남은 예산이 없어요.</p>';
+  const list = movesOf(S.ym);
+  $('#move-list').innerHTML = list.length ? `<div class="field"><span class="label">${Number(S.ym.slice(5))}월에 옮긴 예산</span>
+    <ul class="move-done">${list.map((m) => `<li><span>${esc(unitLabel(m.from))} → ${esc(unitLabel(m.to))}</span><b>${won(m.amount)}</b>
+      <button type="button" class="link-btn" data-move-undo="${esc(m.id)}">취소</button></li>`).join('')}</ul></div>` : '';
+}
+function openMove(key) {
+  mv.to = key;
+  const { leftOf } = moveState();
+  const over = Math.max(0, -leftOf(key));
+  $('#move-amount').value = over ? fmt(over) : '';
+  renderMove();
+  $('#move-dialog').showModal();
+}
+async function saveMoves(list) {
+  const st = structuredClone(S.settings);
+  st.budgetMoves = { ...(st.budgetMoves || {}), [S.ym]: list };
+  await S.store.saveSettings(st);
+  S.settings.budgetMoves = st.budgetMoves;
+}
+async function addMoves(pairs) { // pairs: [[from, amount]]
+  const now = Date.now();
+  const add = pairs.filter(([, a]) => a > 0).map(([from, amount], i) => ({ id: `${now}-${i}`, from, to: mv.to, amount }));
+  if (!add.length) return;
+  await saveMoves([...movesOf(S.ym), ...add]);
+  toast(add.map((m) => `${unitLabel(m.from)} ${won(m.amount)}`).join(', ') + ` → ${unitLabel(mv.to)}로 옮겼어요`);
+}
+
 /* ---------- 지출목표 공유 문구 ---------- */
 // 카톡에 붙여 넣을 목표 문구를 만든다. 목표 순서(설정)대로, 묶음별로 번호를 붙이고,
 // 이번 달 쓴 돈이 있는 항목은 '➡️ 남은 금액'을 붙인다. 쓴 돈은 두 사람 합산.
@@ -1277,7 +1347,7 @@ function parseShareGroups(text) {
   return map;
 }
 function shareText(ym = S.ym) {
-  const budgets = householdBudget();
+  const budgets = budgetsOf(ym);
   const keys = goalOrder().filter((k) => budgets[k]);
   if (!keys.length) return '';
   const groupOf = parseShareGroups(S.settings.shareGroups);
@@ -2033,7 +2103,7 @@ function updateBudgetHint() {
   const date = $('#tx-date').value;
   // 하위 분류 목표가 있으면 그것('식비 · 마트'), 없으면 분류 전체 목표('식비')로 안내
   // 금액이나 횟수 목표가 있는 단위 중 하위 분류 쪽을 먼저 본다
-  const budgets = budgetsOf();
+  const budgets = budgetsOf(date ? date.slice(0, 7) : S.ym);
   const counts = householdCounts();
   const has = (k) => k && (budgets[k] || counts[k]);
   const subKey = form.sub ? `${form.category}|${form.sub}` : '';
@@ -2439,6 +2509,8 @@ function bind() {
     if (e.target.matches?.('details.analysis')) local.set('analysisOpen', e.target.open ? '1' : '0');
   }, true);
   $('#view-dashboard').addEventListener('click', (e) => {
+    const mto = e.target.closest('[data-move-to]');
+    if (mto) { openMove(mto.dataset.moveTo); return; }
     const jump = e.target.closest('[data-jump-cat]');
     if (jump) {
       S.openCats.add(jump.dataset.jumpCat);
@@ -2480,6 +2552,41 @@ function bind() {
   $('#tx-save-next').onclick = () => saveTx(true);
   $('#tx-delete').onclick = (e) => armDelete(e.currentTarget, async () => {
     await S.store.deleteTx(form.id); dlg.close(); toast('삭제했습니다');
+  });
+
+  // 예산 대체
+  const mdlg = $('#move-dialog');
+  $('#move-amount').addEventListener('input', (e) => formatAmountInput(e.target));
+  mdlg.addEventListener('click', async (e) => {
+    if (e.target === mdlg || e.target.closest('[data-close]')) { mdlg.close(); return; }
+    try {
+      const { keys, leftOf } = moveState();
+      const want = parseAmount($('#move-amount').value);
+      const src = e.target.closest('[data-move-from]');
+      if (src) {
+        if (want <= 0) { toast('옮길 금액을 적어 주세요'); $('#move-amount').focus(); return; }
+        const amt = Math.min(want, leftOf(src.dataset.moveFrom));
+        await addMoves([[src.dataset.moveFrom, amt]]);
+      } else if (e.target.closest('#move-auto')) {
+        if (want <= 0) { toast('옮길 금액을 적어 주세요'); $('#move-amount').focus(); return; }
+        let need = want;
+        const pairs = [];
+        for (const k of keys.filter((x) => x !== mv.to && leftOf(x) > 0).sort((a, b) => leftOf(b) - leftOf(a))) {
+          if (need <= 0) break;
+          const amt = Math.min(need, leftOf(k));
+          pairs.push([k, amt]); need -= amt;
+        }
+        await addMoves(pairs);
+      } else if (e.target.closest('[data-move-undo]')) {
+        const id = e.target.closest('[data-move-undo]').dataset.moveUndo;
+        await saveMoves(movesOf(S.ym).filter((m) => m.id !== id));
+        toast('예산 대체를 취소했어요');
+      } else return;
+      const over = Math.max(0, -moveState().leftOf(mv.to));
+      $('#move-amount').value = over ? fmt(over) : '';
+      renderMove();
+      render();
+    } catch (err) { toast(`저장하지 못했습니다: ${err.message}`); }
   });
 
   // 지출목표 공유 문구 (헤더 버튼, 보고 있는 달 기준)
