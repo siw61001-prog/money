@@ -696,3 +696,16 @@ textarea.input { width: 100%; resize: vertical; line-height: 1.55; font-size: 14
 .move-done li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--s3); align-items: center; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .move-done li:first-child { border-top: 0; }
 @media (max-width: 720px) { .move-src { grid-template-columns: minmax(0, 1fr) auto; } .move-src .ms-go { display: none; } }
+
+/* ---------- 수입·지출 자동 반영 ---------- */
+.link-rows { display: grid; gap: var(--s3); margin-top: var(--s3); }
+.link-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--s2) var(--s4); align-items: end; padding-top: var(--s3); border-top: 1px solid var(--line); }
+.link-row:first-child { border-top: 0; padding-top: 0; }
+.link-who { font-weight: 700; padding-bottom: 10px; display: inline-flex; align-items: center; gap: 6px; }
+.link-row .label small { font-weight: 500; }
+.link-since { padding-bottom: 10px; white-space: nowrap; }
+.pill.auto { background: var(--accent-soft); color: var(--saving); font-size: 11.5px; font-size: var(--t-xs); margin-left: 4px; vertical-align: 1px; }
+@media (max-width: 720px) {
+  .link-row { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+  .link-who, .link-since { padding-bottom: 0; }
+}

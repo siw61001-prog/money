@@ -1,5 +1,5 @@
-import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261127a';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261127a';
+import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261127b';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261127b';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -951,6 +951,81 @@ async function copyFixedFromPrev() {
   toast(`고정비용 ${add.length}건을 추가했습니다${later ? ` · 아직 날짜가 안 된 ${later}건은 뺐어요` : ''}`);
 }
 
+/* ---------- 수입·지출 자동 반영 ---------- */
+// 사람마다 '생활비 통장'(과 선택한 적금 통장)을 정해 두면, 정한 날부터 적은 내역이 바로 반영된다.
+//   생활비 통장 = 저장된 금액 + 수입 − 지출(고정·소비) − 저축 이체
+//   적금 통장   = 저장된 금액 + 저축 이체
+// 저장된 금액에는 '반영분을 뺀 기준값'을 둔다. 그래서 내역을 고치거나 지워도 다시 계산되고, 같은 돈이 두 번 들어가지 않는다.
+const assetLinks = () => S.settings?.assetLinks || {};
+function linkDelta(member, since) {
+  const d = { account: 0, savings: 0 };
+  if (!since) return d;
+  for (const t of S.tx) {
+    if (t.owner !== member || t.date < since) continue;
+    if (t.type === 'income') d.account += t.amount;
+    else if (isSaving(t)) { d.account -= t.amount; d.savings += t.amount; }
+    else d.account -= t.amount;
+  }
+  return d;
+}
+// 이 자산이 자동 반영 대상이면 { member, role: 'account'|'savings' }
+function linkOf(assetId) {
+  for (const [member, l] of Object.entries(assetLinks())) {
+    if (l?.account === assetId) return { member, role: 'account', since: l.since };
+    if (l?.savings && l.savings === assetId) return { member, role: 'savings', since: l.since };
+  }
+  return null;
+}
+function applyAssetLinks(raw) {
+  const cache = {};
+  return raw.map((a) => {
+    const k = linkOf(a.id);
+    if (!k) return a;
+    cache[k.member] = cache[k.member] || linkDelta(k.member, k.since);
+    return { ...a, amount: a.amount + cache[k.member][k.role], auto: k.role };
+  });
+}
+const rawAsset = (id) => (S.assetsRaw || []).find((a) => a.id === id);
+
+// 통장 지정을 바꾼다: 원래 통장은 지금 보이는 금액으로 굳히고, 새 통장은 오늘부터 반영되도록 기준값을 맞춘다
+async function setAssetLink(member, account, savings) {
+  const old = assetLinks()[member] || {};
+  const since = today();
+  const amounts = new Map();
+  const cur = (id) => (amounts.has(id) ? amounts.get(id) : rawAsset(id)?.amount ?? 0);
+  const oldD = linkDelta(member, old.since);
+  if (old.account && rawAsset(old.account)) amounts.set(old.account, cur(old.account) + oldD.account);
+  if (old.savings && rawAsset(old.savings)) amounts.set(old.savings, cur(old.savings) + oldD.savings);
+  const newD = linkDelta(member, since);
+  if (account) amounts.set(account, cur(account) - newD.account);
+  if (savings) amounts.set(savings, cur(savings) - newD.savings);
+  const st = structuredClone(S.settings);
+  st.assetLinks = { ...(st.assetLinks || {}) };
+  if (account) st.assetLinks[member] = { account, savings: savings || '', since };
+  else delete st.assetLinks[member];
+  for (const [id, amount] of amounts) if (rawAsset(id) && rawAsset(id).amount !== amount) await S.store.updateAsset(id, { amount });
+  await S.store.saveSettings(st);
+}
+
+function assetLinkCard() {
+  const owners = S.who === 'all' ? MEMBERS : [S.who];
+  return `<article class="card span-12 link-card">
+    <div class="card-head"><h2>수입·지출 자동 반영</h2></div>
+    <p class="hint">통장을 정해 두면 그날부터 적는 수입은 더하고 지출은 빼서 자산에 바로 반영해요. 저축·단기 적금 이체는 생활비 통장에서 빼서 적금 통장에 더해요.</p>
+    <div class="link-rows">${owners.map((m) => {
+      const l = assetLinks()[m] || {};
+      const mine = S.assets.filter((a) => a.owner === m && a.kind === '자산');
+      const opt = (sel, none) => `<option value="">${none}</option>${mine.map((a) => `<option value="${esc(a.id)}" ${sel === a.id ? 'selected' : ''}>${esc(a.name)}${a.place ? ` (${esc(a.place)})` : ''}</option>`).join('')}`;
+      return `<div class="link-row" data-link-member="${esc(m)}">
+        <span class="link-who"><span class="dot" style="background:${memberColor(m)}"></span> ${esc(m)}</span>
+        <label class="field"><span class="label">생활비 통장</span><select class="input" data-link-account>${opt(l.account, '자동 반영 안 함')}</select></label>
+        <label class="field"><span class="label">적금 통장 <small>(저축 이체가 쌓일 곳)</small></span><select class="input" data-link-savings ${l.account ? '' : 'disabled'}>${opt(l.savings, '선택 안 함')}</select></label>
+        <span class="hint link-since">${l.account ? `${Number(l.since.slice(5, 7))}월 ${Number(l.since.slice(8))}일부터 반영 중` : mine.length ? '' : '먼저 자산 항목을 추가하세요'}</span>
+      </div>`;
+    }).join('')}</div>
+  </article>`;
+}
+
 /* ---------- 자산 ---------- */
 function renderAssets() {
   const owners = S.who === 'all' ? MEMBERS : [S.who];
@@ -988,6 +1063,7 @@ function renderAssets() {
         }).join('')}</div>
       </article>` : ''}
       ${assetTrendCard()}
+      ${assetLinkCard()}
       <article class="card span-12">
         <div class="card-head"><h2>자산·부채 목록</h2><button type="button" class="btn small primary" id="add-asset">＋ 항목 추가</button></div>
         ${list.length ? `<div class="table-wrap"><table class="stack-table asset-table">
@@ -996,7 +1072,7 @@ function renderAssets() {
             <tr data-asset="${esc(a.id)}" style="cursor:pointer" data-meta="${esc([S.who === 'all' ? a.owner : '', a.kind, a.group, a.place].filter(Boolean).join(' · '))}">
               ${S.who === 'all' ? `<td class="left a-owner"><span class="dot" style="background:${memberColor(a.owner)}"></span> ${esc(a.owner)}</td>` : ''}
               <td class="left a-kind"><span class="pill ${a.kind === '부채' ? '' : 'saving'}">${esc(a.kind)}</span></td>
-              <td class="left a-group">${esc(a.group)}</td><td class="left a-name">${esc(a.name)}</td><td class="left a-place">${esc(a.place)}</td>
+              <td class="left a-group">${esc(a.group)}</td><td class="left a-name">${esc(a.name)}${a.auto ? ` <span class="pill auto">${a.auto === 'account' ? '자동' : '적금 자동'}</span>` : ''}</td><td class="left a-place">${esc(a.place)}</td>
               <td class="a-amt ${a.kind === '부채' ? 'c-expense' : ''}">${fmt(a.amount)}</td><td class="left a-note">${esc(a.note)}</td>
             </tr>`).join('')}</tbody>
         </table></div>` : '<p class="empty">아직 자산 항목이 없습니다. ‘항목 추가’를 누르거나 설정에서 엑셀을 가져오세요.</p>'}
@@ -1589,7 +1665,7 @@ async function runImport() {
 function exportJSON() {
   const strip = ({ updatedAt, ...rest }) => rest;
   const payload = { app: 'gagyebu', version: 1, exportedAt: new Date().toISOString(), settings: S.settings,
-    tx: S.tx.map(strip), assets: S.assets.map(strip), assetHistory: S.history };
+    tx: S.tx.map(strip), assets: (S.assetsRaw || S.assets).map(strip), assetHistory: S.history };
   const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -2209,6 +2285,11 @@ function openAsset(a) {
   $('#asset-name').value = a?.name || '';
   $('#asset-place').value = a?.place || '';
   $('#asset-amount').value = a ? fmt(a.amount) : '';
+  const lk = a ? linkOf(a.id) : null;
+  $('#asset-auto-hint').hidden = !lk;
+  if (lk) $('#asset-auto-hint').textContent = lk.role === 'account'
+    ? '수입·지출이 자동 반영되는 통장이에요. 실제 잔액과 다르면 지금 잔액을 적어 주세요. 그 값을 기준으로 다시 반영해요.'
+    : '저축 이체가 자동으로 쌓이는 적금이에요. 실제 잔액과 다르면 지금 잔액을 적어 주세요.';
   $('#asset-note').value = a?.note || '';
   $('#asset-group-list').innerHTML = [...new Set(['현금', '예금', '적금', '투자', '보증금', '대출', ...S.assets.map((x) => x.group)])]
     .map((g) => `<option value="${esc(g)}"></option>`).join('');
@@ -2223,8 +2304,10 @@ async function saveAsset() {
   const name = $('#asset-name').value.trim();
   const problem = !aform.owner ? '누구의 자산인지 선택하세요.' : !name ? '상세 항목을 입력하세요.' : '';
   if (problem) { err.textContent = problem; err.hidden = false; return; }
+  const k = aform.id ? linkOf(aform.id) : null;
+  const base = k ? amount - linkDelta(k.member, k.since)[k.role] : amount;
   const data = { owner: aform.owner, kind: aform.kind, group: $('#asset-group').value.trim() || '기타', name,
-    place: $('#asset-place').value.trim(), amount, note: $('#asset-note').value.trim() };
+    place: $('#asset-place').value.trim(), amount: base, note: $('#asset-note').value.trim() };
   try {
     if (aform.id) await S.store.updateAsset(aform.id, data);
     else await S.store.addAsset(data);
@@ -2329,6 +2412,19 @@ function bind() {
   });
 
   // 자산
+  // 수입·지출 자동 반영: 통장 고르기
+  $('#view-assets').addEventListener('change', async (e) => {
+    const row = e.target.closest('[data-link-member]');
+    if (!row || !e.target.matches('[data-link-account], [data-link-savings]')) return;
+    const member = row.dataset.linkMember;
+    const account = $('[data-link-account]', row).value;
+    const savings = account ? $('[data-link-savings]', row).value : '';
+    if (savings && savings === account) { toast('생활비 통장과 적금 통장은 서로 달라야 해요'); render(); return; }
+    try {
+      await setAssetLink(member, account, savings);
+      toast(account ? `${member}: 오늘부터 수입·지출을 자동 반영해요` : `${member}: 자동 반영을 껐어요`);
+    } catch (err) { toast(`저장하지 못했습니다: ${err.message}`); render(); }
+  });
   $('#view-assets').addEventListener('click', (e) => {
     if (e.target.closest('#add-asset')) { openAsset(null); return; }
     const row = e.target.closest('[data-asset]');
@@ -2721,13 +2817,14 @@ async function start() {
         S.user = user;
         $('#login').hidden = !!user;
         $('#loading').hidden = !user || S.ready;
-        if (!user) { S.ready = false; S.tx = []; S.assets = []; }
+        if (!user) { S.ready = false; S.tx = []; S.assets = []; S.assetsRaw = []; }
         render();
       },
       onData({ tx, assets, settings, assetHistory, ready }) {
         S.tx = tx.filter((t) => t.date && Number.isFinite(t.amount));
-        S.assets = assets;
         S.settings = settings;
+        S.assetsRaw = assets;
+        S.assets = applyAssetLinks(assets);
         S.history = assetHistory || {};
         S.ready = ready;
         $('#loading').hidden = ready;

@@ -1,6 +1,6 @@
 // 저장소 계층: Firebase(Firestore) 또는 데모(localStorage) 중 하나를 같은 인터페이스로 제공한다.
-import { firebaseConfig } from './firebase-config.js?v=20261127a';
-import { buildSample, SAMPLE_MEMBERS } from './sample.js?v=20261127a';
+import { firebaseConfig } from './firebase-config.js?v=20261127b';
+import { buildSample, SAMPLE_MEMBERS } from './sample.js?v=20261127b';
 
 // 주소에 ?demo=1 을 붙이면 실제 데이터 대신 이 브라우저의 데모 데이터(가상의 두 사람 샘플)로 연다
 const params = new URLSearchParams(location.search);
@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS = {
   subcategories: { '식비': ['마트', '배달음식', '외식', '편의점'] }, // 분류별 하위 분류
   budgetCounts: {}, // 목표 횟수 { '통합': { '식비|배달음식': 4 } }
   budgetOrder: {}, // 목표 표시 순서 { '통합': ['식비|마트', '간식', …] } — 대시보드도 이 순서
+  assetLinks: {}, // 수입·지출 자동 반영 { 사람: { account: 자산id, savings: 자산id|'', since: 'YYYY-MM-DD' } }
   budgetMoves: {}, // 그달만 예산 옮기기 { 'YYYY-MM': [{ id, from, to, amount }] } — 내역은 사실대로, 예산만 이동
   // 공유 문구에서 목표를 묶는 방법. 한 줄에 '묶음: 항목, 항목'. 식비 하위 분류는 따로 적지 않아도 식비로 묶인다.
   shareGroups: '카페: 간식\n생활비: 생활비, 용돈, 주유, 교통비, 경조사',
@@ -50,6 +51,7 @@ function mergeSettings(s) {
     budgetCounts: { ...(s.budgetCounts || {}) },
     budgetOrder: { ...(s.budgetOrder || {}) },
     budgetMoves: { ...(s.budgetMoves || {}) },
+    assetLinks: { ...(s.assetLinks || {}) },
     shareGroups: typeof s.shareGroups === 'string' ? s.shareGroups : base.shareGroups,
   };
 }
