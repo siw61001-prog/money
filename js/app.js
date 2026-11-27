@@ -1,5 +1,5 @@
-import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261127b';
-import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261127b';
+import { createStore, MEMBERS, IS_DEMO } from './store.js?v=20261127d';
+import { parseWorkbook, guessOwner, downloadTemplate, parseUpload } from './import.js?v=20261127d';
 
 // 고정비용 중 이 분류는 '지출'이 아니라 '정기 저축'으로 집계한다.
 const SAVING_CATS = ['저축', '단기 적금'];
@@ -334,6 +334,25 @@ function statusRows(hhCats) {
   }).sort((a, b) => goalRank(a.c) - goalRank(b.c) || b.spent - a.spent);
 }
 
+// 예산 묶음: '식비|마트'처럼 하위 분류는 상위 분류(식비)로, 그 밖의 항목은 '기타'로 묶는다.
+// 묶음 예산은 안에 든 예산(대체 반영)의 합. 주의·초과 판단은 묶음 합계로만 한다 (묶음 안에서는 자유롭게 써도 됨).
+const OTHER_GROUP = '기타';
+function budgetGroupOf(key, keys) {
+  if (key.includes('|')) return key.split('|')[0];
+  return keys.some((k) => k.startsWith(`${key}|`)) ? key : OTHER_GROUP;
+}
+function budgetGroups(rows) { // rows: [{ c, budget, spent }]  (예산 있는 항목만, 표시 순서대로)
+  const prog = monthProgress(S.ym);
+  const keys = rows.map((r) => r.c);
+  const map = new Map();
+  for (const r of rows) {
+    const g = budgetGroupOf(r.c, keys);
+    if (!map.has(g)) map.set(g, { name: g, rows: [], budget: 0, spent: 0 });
+    const x = map.get(g); x.rows.push(r); x.budget += r.budget; x.spent += r.spent;
+  }
+  return [...map.values()].map((g) => ({ ...g, state: g.budget ? budgetState(g.spent, g.budget, prog.elapsed) : (g.spent > 0 ? 'over' : 'ok') }));
+}
+
 // 대시보드 맨 위: "이번 달 괜찮은가"에 바로 답한다. 큰 숫자는 남은 예산 하나.
 // 모든 숫자는 '예산 항목'끼리만 계산하고(분모를 섞지 않음), 예산 없는 분류는 '예산 밖 지출'로 따로 보여준다.
 function monthStatusCard(hhCats, monthNo) {
@@ -348,9 +367,10 @@ function monthStatusCard(hhCats, monthNo) {
   const dayNo = Number(today().slice(8));
   const daysInMonth = new Date(Number(S.ym.slice(0, 4)), Number(S.ym.slice(5)), 0).getDate();
   const forecast = prog.current && dayNo ? Math.round((tSpent / dayNo) * daysInMonth) : 0;
-  const over = budgeted.filter((r) => r.state === 'over');
-  const warn = budgeted.filter((r) => r.state === 'warn');
-  const chip = (r) => `<button type="button" class="pill ${r.state}" data-jump-cat="${esc(r.c)}">${esc(unitLabel(r.c))}</button>`;
+  const groups = budgetGroups(budgeted);
+  const over = groups.filter((g) => g.state === 'over');
+  const warn = groups.filter((g) => g.state === 'warn');
+  const chip = (g) => `<button type="button" class="pill ${g.state}" data-jump-group="${esc(g.name)}">${esc(g.name)}</button>`;
   if (!tBudget) {
     return `<article class="card span-12 month-status">
       <div class="card-head"><h2>${monthNo}월 상태</h2><a class="sub" href="#settings" data-goto-budget>예산 정하기</a></div>
@@ -638,23 +658,36 @@ function budgetCard(cats, catMax, cur, monthNo, monthTx) {
   return `<article class="card span-6" id="budget-card">
     <div class="card-head"><h2>${monthNo}월 예산 <small class="muted-tag">통합</small></h2><a class="sub" href="#settings" data-goto-budget>예산 수정</a></div>
     <div class="budget-head" aria-hidden="true"><span></span><span>잔여예산</span></div>
-    <div class="bars budget-rows">${rows.map((r) => {
-      const st = r.budget ? budgetState(r.spent, r.budget, prog.elapsed) : (r.spent > 0 ? 'over' : 'ok');
-      const left = r.budget - r.spent;
-      // 그달 대체: 받은 것 / 보낸 것
-      const ins = moves.filter((m) => m.to === r.c);
-      const outs = moves.filter((m) => m.from === r.c);
-      const note = [...ins.map((m) => `${unitLabel(m.from)}에서 +${won(m.amount)}`), ...outs.map((m) => `${unitLabel(m.to)}로 −${won(m.amount)}`)].join(' · ');
-      // 넘었으면 '다른 예산에서 메우기', 옮긴 적 있으면 '대체 고치기' (줄 버튼 밖에 둔다)
-      const fix = left < 0 ? `<div class="b-fix"><button type="button" class="link-btn" data-move-to="${esc(r.c)}">다른 예산에서 ${won(-left)} 메우기</button></div>`
-        : note ? `<div class="b-fix"><button type="button" class="link-btn muted" data-move-to="${esc(r.c)}">대체 고치기</button></div>` : '';
-      return catItem(r.c, `<span class="b-top"><span class="name">${r.c.includes('|') ? `<span class="pfx">${esc(r.c.split('|')[0])} · </span>${esc(r.c.split('|')[1])}` : esc(r.c)}</span>
-          <span class="b-spent">${fmt(r.spent)}원</span>
-          <span class="b-budget">예산 ${shortWon(r.budget)}</span></span>
-        <span class="bar-track"><span class="${st}" style="width:${r.budget ? Math.min(100, (r.spent / r.budget) * 100) : (r.spent ? 100 : 0)}%"></span>
+    <div class="bars budget-rows">${budgetGroups(rows).map((g) => {
+      const fn = (st) => (st === 'over' ? '<sup class="fn over">초과</sup>' : st === 'warn' ? '<sup class="fn warn">주의</sup>' : '');
+      const gLeft = g.budget - g.spent;
+      // 묶음 줄: 합계만 보면 된다
+      const head = `<div class="bar-row b-grouprow" data-group="${esc(g.name)}">
+        <span class="b-top"><span class="name">${esc(g.name)}</span>
+          <span class="b-spent">${fmt(g.spent)}원</span>
+          <span class="b-budget">예산 ${shortWon(g.budget)}</span></span>
+        <span class="bar-track"><span class="${g.state}" style="width:${g.budget ? Math.min(100, (g.spent / g.budget) * 100) : (g.spent ? 100 : 0)}%"></span>
           ${prog.current ? `<i class="pace" style="left:${prog.elapsed * 100}%"></i>` : ''}</span>
-        ${note ? `<span class="b-note">${esc(note)}</span>` : ''}
-        <span class="b-left ${st}">${left < 0 ? '<small>초과</small>' : st === 'warn' ? '<small>주의</small>' : ''}<b>${won(Math.abs(left))}</b>${countBadge(r.c)}</span>`, monthTx, fix);
+        <span class="b-left ${g.state}"><b>${gLeft < 0 ? '−' : ''}${won(Math.abs(gLeft))}</b>${fn(g.state)}</span></div>`;
+      // 하위 줄: 어디서 얼마 썼는지 보는 용도 (경고 배지 없음)
+      const subs = g.rows.map((r) => {
+        const st = r.budget ? budgetState(r.spent, r.budget, prog.elapsed) : (r.spent > 0 ? 'over' : 'ok');
+        const left = r.budget - r.spent;
+        const ins = moves.filter((m) => m.to === r.c);
+        const outs = moves.filter((m) => m.from === r.c);
+        const note = [...ins.map((m) => `${unitLabel(m.from)}에서 +${won(m.amount)}`), ...outs.map((m) => `${unitLabel(m.to)}로 −${won(m.amount)}`)].join(' · ');
+        // 묶음 합계가 넘었을 때만 '다른 예산에서 메우기' (묶음 안에서 넘는 건 괜찮다)
+        const fix = gLeft < 0 && left < 0 ? `<div class="b-fix"><button type="button" class="link-btn" data-move-to="${esc(r.c)}">다른 예산에서 ${won(Math.min(-left, -gLeft))} 메우기</button></div>`
+          : note ? `<div class="b-fix"><button type="button" class="link-btn muted" data-move-to="${esc(r.c)}">대체 고치기</button></div>` : '';
+        const label = r.c.includes('|') ? esc(r.c.split('|')[1]) : esc(r.c);
+        return catItem(r.c, `<span class="b-top"><span class="name">${label}</span>
+            <span class="b-spent">${fmt(r.spent)}원</span>
+            <span class="b-budget">예산 ${shortWon(r.budget)}</span></span>
+          <span class="bar-track"><span class="${st}" style="width:${r.budget ? Math.min(100, (r.spent / r.budget) * 100) : (r.spent ? 100 : 0)}%"></span></span>
+          ${note ? `<span class="b-note">${esc(note)}</span>` : ''}
+          <span class="b-left sub ${left < 0 ? 'neg' : ''}"><b>${left < 0 ? '−' : ''}${won(Math.abs(left))}</b>${countBadge(r.c)}</span>`, monthTx, fix);
+      }).join('');
+      return `<div class="b-group">${head}<div class="b-subs">${subs}</div></div>`;
     }).join('')}</div>
     ${extra.length ? `<h3 class="sub-head">예산 없는 분류</h3>
     <div class="bars budget-rows">${extra.map(([c, v]) => catItem(c, `<span class="b-top"><span class="name">${esc(unitLabel(c))}</span>
@@ -957,52 +990,71 @@ async function copyFixedFromPrev() {
 //   적금 통장   = 저장된 금액 + 저축 이체
 // 저장된 금액에는 '반영분을 뺀 기준값'을 둔다. 그래서 내역을 고치거나 지워도 다시 계산되고, 같은 돈이 두 번 들어가지 않는다.
 const assetLinks = () => S.settings?.assetLinks || {};
-function linkDelta(member, since) {
-  const d = { account: 0, savings: 0 };
+// 적금 통장 목록: 예전 형식(통장 id 하나)도 읽는다 → [{ id, amount }]
+const savingsOf = (l) => (Array.isArray(l?.savings) ? l.savings : l?.savings ? [{ id: l.savings, amount: 0 }] : [])
+  .filter((x) => x && x.id);
+// 저축 이체 한 건이 어느 적금으로 가는지: 메모에 통장 이름 → 월 납입액과 같은 금액 → 목록 첫 통장
+function savingsTarget(t, list) {
+  if (!list.length) return '';
+  const m = normMemo(t.memo || '');
+  const byName = list.find((x) => { const n = normMemo(rawAsset(x.id)?.name || ''); return n.length >= 2 && m.includes(n); });
+  if (byName) return byName.id;
+  const byAmount = list.find((x) => Number(x.amount) > 0 && Number(x.amount) === t.amount);
+  return (byAmount || list[0]).id;
+}
+function linkDelta(member, since, l = assetLinks()[member]) {
+  const d = { account: 0, sav: {} };
   if (!since) return d;
+  const list = savingsOf(l);
   for (const t of S.tx) {
     if (t.owner !== member || t.date < since) continue;
     if (t.type === 'income') d.account += t.amount;
-    else if (isSaving(t)) { d.account -= t.amount; d.savings += t.amount; }
-    else d.account -= t.amount;
+    else if (isSaving(t)) {
+      d.account -= t.amount;
+      const to = savingsTarget(t, list);
+      if (to) d.sav[to] = (d.sav[to] || 0) + t.amount;
+    } else d.account -= t.amount;
   }
   return d;
 }
-// 이 자산이 자동 반영 대상이면 { member, role: 'account'|'savings' }
+// 이 자산이 자동 반영 대상이면 { member, role: 'account'|'savings', since }
 function linkOf(assetId) {
   for (const [member, l] of Object.entries(assetLinks())) {
     if (l?.account === assetId) return { member, role: 'account', since: l.since };
-    if (l?.savings && l.savings === assetId) return { member, role: 'savings', since: l.since };
+    if (savingsOf(l).some((x) => x.id === assetId)) return { member, role: 'savings', since: l.since };
   }
   return null;
 }
+const deltaOf = (d, id, role) => (role === 'account' ? d.account : d.sav[id] || 0);
 function applyAssetLinks(raw) {
   const cache = {};
   return raw.map((a) => {
     const k = linkOf(a.id);
     if (!k) return a;
     cache[k.member] = cache[k.member] || linkDelta(k.member, k.since);
-    return { ...a, amount: a.amount + cache[k.member][k.role], auto: k.role };
+    return { ...a, amount: a.amount + deltaOf(cache[k.member], a.id, k.role), auto: k.role };
   });
 }
 const rawAsset = (id) => (S.assetsRaw || []).find((a) => a.id === id);
 
-// 통장 지정을 바꾼다: 원래 통장은 지금 보이는 금액으로 굳히고, 새 통장은 오늘부터 반영되도록 기준값을 맞춘다
-async function setAssetLink(member, account, savings) {
+// 통장 지정을 바꾼다: 원래 통장들은 지금 보이는 금액으로 굳히고, 새 통장들은 오늘부터 반영되도록 기준값을 맞춘다
+async function setAssetLink(member, account, savings) { // savings: [{ id, amount }]
   const old = assetLinks()[member] || {};
   const since = today();
   const amounts = new Map();
   const cur = (id) => (amounts.has(id) ? amounts.get(id) : rawAsset(id)?.amount ?? 0);
-  const oldD = linkDelta(member, old.since);
+  const oldD = linkDelta(member, old.since, old);
   if (old.account && rawAsset(old.account)) amounts.set(old.account, cur(old.account) + oldD.account);
-  if (old.savings && rawAsset(old.savings)) amounts.set(old.savings, cur(old.savings) + oldD.savings);
-  const newD = linkDelta(member, since);
-  if (account) amounts.set(account, cur(account) - newD.account);
-  if (savings) amounts.set(savings, cur(savings) - newD.savings);
+  for (const x of savingsOf(old)) if (rawAsset(x.id)) amounts.set(x.id, cur(x.id) + (oldD.sav[x.id] || 0));
+  const next = account ? { account, savings: savings.filter((x) => x.id && x.id !== account), since } : null;
+  if (next) {
+    const newD = linkDelta(member, since, next);
+    amounts.set(account, cur(account) - newD.account);
+    for (const x of next.savings) amounts.set(x.id, cur(x.id) - (newD.sav[x.id] || 0));
+  }
   const st = structuredClone(S.settings);
   st.assetLinks = { ...(st.assetLinks || {}) };
-  if (account) st.assetLinks[member] = { account, savings: savings || '', since };
-  else delete st.assetLinks[member];
+  if (next) st.assetLinks[member] = next; else delete st.assetLinks[member];
   for (const [id, amount] of amounts) if (rawAsset(id) && rawAsset(id).amount !== amount) await S.store.updateAsset(id, { amount });
   await S.store.saveSettings(st);
 }
@@ -1011,16 +1063,26 @@ function assetLinkCard() {
   const owners = S.who === 'all' ? MEMBERS : [S.who];
   return `<article class="card span-12 link-card">
     <div class="card-head"><h2>수입·지출 자동 반영</h2></div>
-    <p class="hint">통장을 정해 두면 그날부터 적는 수입은 더하고 지출은 빼서 자산에 바로 반영해요. 저축·단기 적금 이체는 생활비 통장에서 빼서 적금 통장에 더해요.</p>
+    <p class="hint">통장을 정해 두면 그날부터 적는 수입은 더하고 지출은 빼서 자산에 바로 반영해요. 저축·단기 적금 이체는 생활비 통장에서 빼서 적금 통장에 더해요.
+      적금이 여러 개면 메모에 통장 이름이 있는 곳, 없으면 월 납입액이 같은 곳, 그것도 없으면 맨 위 통장으로 들어가요.</p>
     <div class="link-rows">${owners.map((m) => {
       const l = assetLinks()[m] || {};
       const mine = S.assets.filter((a) => a.owner === m && a.kind === '자산');
-      const opt = (sel, none) => `<option value="">${none}</option>${mine.map((a) => `<option value="${esc(a.id)}" ${sel === a.id ? 'selected' : ''}>${esc(a.name)}${a.place ? ` (${esc(a.place)})` : ''}</option>`).join('')}`;
+      const sav = savingsOf(l);
+      const opts = (sel, none, skip = []) => `<option value="">${none}</option>${mine.filter((a) => a.id === sel || !skip.includes(a.id))
+        .map((a) => `<option value="${esc(a.id)}" ${sel === a.id ? 'selected' : ''}>${esc(a.name)}${a.place ? ` (${esc(a.place)})` : ''}</option>`).join('')}`;
+      const used = [l.account, ...sav.map((x) => x.id)].filter(Boolean);
+      const savRow = (x, i) => `<div class="sav-row" data-sav-index="${i}">
+          <select class="input" data-sav-id aria-label="적금 통장">${opts(x.id, x.id ? '선택 안 함' : '+ 적금 통장 추가', used)}</select>
+          <span class="count-input sav-amt"><input class="input" data-sav-amount inputmode="numeric" placeholder="월 납입액" value="${x.amount ? fmt(x.amount) : ''}" ${x.id ? '' : 'disabled'} aria-label="월 납입액"><span>원</span></span>
+          ${x.id ? `<button type="button" class="icon-btn small" data-sav-del aria-label="적금 통장 빼기"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button>` : '<span></span>'}
+        </div>`;
       return `<div class="link-row" data-link-member="${esc(m)}">
-        <span class="link-who"><span class="dot" style="background:${memberColor(m)}"></span> ${esc(m)}</span>
-        <label class="field"><span class="label">생활비 통장</span><select class="input" data-link-account>${opt(l.account, '자동 반영 안 함')}</select></label>
-        <label class="field"><span class="label">적금 통장 <small>(저축 이체가 쌓일 곳)</small></span><select class="input" data-link-savings ${l.account ? '' : 'disabled'}>${opt(l.savings, '선택 안 함')}</select></label>
-        <span class="hint link-since">${l.account ? `${Number(l.since.slice(5, 7))}월 ${Number(l.since.slice(8))}일부터 반영 중` : mine.length ? '' : '먼저 자산 항목을 추가하세요'}</span>
+        <span class="link-who"><span class="link-name"><span class="dot" style="background:${memberColor(m)}"></span> ${esc(m)}</span>
+          <small class="hint">${l.account ? `${Number(l.since.slice(5, 7))}월 ${Number(l.since.slice(8))}일부터 반영 중` : mine.length ? '' : '먼저 자산 항목을 추가하세요'}</small></span>
+        <label class="field"><span class="label">생활비 통장</span><select class="input" data-link-account>${opts(l.account, '자동 반영 안 함', sav.map((x) => x.id))}</select></label>
+        ${l.account ? `<div class="field"><span class="label">적금 통장 <small>(통장 · 월 납입액)</small></span>
+          <div class="sav-list">${[...sav, { id: '', amount: 0 }].map(savRow).join('')}</div></div>` : ''}
       </div>`;
     }).join('')}</div>
   </article>`;
@@ -2305,7 +2367,7 @@ async function saveAsset() {
   const problem = !aform.owner ? '누구의 자산인지 선택하세요.' : !name ? '상세 항목을 입력하세요.' : '';
   if (problem) { err.textContent = problem; err.hidden = false; return; }
   const k = aform.id ? linkOf(aform.id) : null;
-  const base = k ? amount - linkDelta(k.member, k.since)[k.role] : amount;
+  const base = k ? amount - deltaOf(linkDelta(k.member, k.since), aform.id, k.role) : amount;
   const data = { owner: aform.owner, kind: aform.kind, group: $('#asset-group').value.trim() || '기타', name,
     place: $('#asset-place').value.trim(), amount: base, note: $('#asset-note').value.trim() };
   try {
@@ -2412,18 +2474,32 @@ function bind() {
   });
 
   // 자산
-  // 수입·지출 자동 반영: 통장 고르기
-  $('#view-assets').addEventListener('change', async (e) => {
-    const row = e.target.closest('[data-link-member]');
-    if (!row || !e.target.matches('[data-link-account], [data-link-savings]')) return;
-    const member = row.dataset.linkMember;
+  // 수입·지출 자동 반영: 생활비 통장 · 적금 통장 목록
+  const readLinkRow = (row) => {
     const account = $('[data-link-account]', row).value;
-    const savings = account ? $('[data-link-savings]', row).value : '';
-    if (savings && savings === account) { toast('생활비 통장과 적금 통장은 서로 달라야 해요'); render(); return; }
+    const savings = $$('.sav-row', row).map((r) => ({ id: $('[data-sav-id]', r).value, amount: parseAmount($('[data-sav-amount]', r).value) }))
+      .filter((x) => x.id);
+    return { member: row.dataset.linkMember, account, savings: [...new Map(savings.map((x) => [x.id, x])).values()] };
+  };
+  const saveLinkRow = async (row, msg) => {
+    const { member, account, savings } = readLinkRow(row);
     try {
-      await setAssetLink(member, account, savings);
-      toast(account ? `${member}: 오늘부터 수입·지출을 자동 반영해요` : `${member}: 자동 반영을 껐어요`);
+      await setAssetLink(member, account, account ? savings : []);
+      toast(msg || (account ? `${member}: 자동 반영 설정을 저장했어요` : `${member}: 자동 반영을 껐어요`));
     } catch (err) { toast(`저장하지 못했습니다: ${err.message}`); render(); }
+  };
+  $('#view-assets').addEventListener('change', (e) => {
+    const row = e.target.closest('[data-link-member]');
+    if (!row) return;
+    if (e.target.matches('[data-link-account], [data-sav-id], [data-sav-amount]')) saveLinkRow(row);
+  });
+  $('#view-assets').addEventListener('input', (e) => { if (e.target.matches('[data-sav-amount]')) formatAmountInput(e.target); });
+  $('#view-assets').addEventListener('click', (e) => {
+    const del = e.target.closest('[data-sav-del]');
+    if (!del) return;
+    const row = del.closest('[data-link-member]');
+    del.closest('.sav-row').remove();
+    saveLinkRow(row, '적금 통장을 뺐어요');
   });
   $('#view-assets').addEventListener('click', (e) => {
     if (e.target.closest('#add-asset')) { openAsset(null); return; }
@@ -2607,6 +2683,8 @@ function bind() {
   $('#view-dashboard').addEventListener('click', (e) => {
     const mto = e.target.closest('[data-move-to]');
     if (mto) { openMove(mto.dataset.moveTo); return; }
+    const jg = e.target.closest('[data-jump-group]');
+    if (jg) { $(`#budget-card [data-group="${CSS.escape(jg.dataset.jumpGroup)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     const jump = e.target.closest('[data-jump-cat]');
     if (jump) {
       S.openCats.add(jump.dataset.jumpCat);

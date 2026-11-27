@@ -699,7 +699,12 @@ textarea.input { width: 100%; resize: vertical; line-height: 1.55; font-size: 14
 
 /* ---------- 수입·지출 자동 반영 ---------- */
 .link-rows { display: grid; gap: var(--s3); margin-top: var(--s3); }
-.link-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--s2) var(--s4); align-items: end; padding-top: var(--s3); border-top: 1px solid var(--line); }
+.link-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1.4fr); gap: var(--s2) var(--s4); align-items: start; padding-top: var(--s3); border-top: 1px solid var(--line); }
+.link-who { flex-direction: column; align-items: flex-start !important; padding-top: 26px; }
+.link-who small { font-weight: 500; }
+.sav-list { display: grid; gap: 6px; }
+.sav-row { display: grid; grid-template-columns: minmax(0, 1fr) 130px 32px; gap: 6px; align-items: center; }
+.sav-amt .input { text-align: right; }
 .link-row:first-child { border-top: 0; padding-top: 0; }
 .link-who { font-weight: 700; padding-bottom: 10px; display: inline-flex; align-items: center; gap: 6px; }
 .link-row .label small { font-weight: 500; }
@@ -709,3 +714,32 @@ textarea.input { width: 100%; resize: vertical; line-height: 1.55; font-size: 14
   .link-row { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
   .link-who, .link-since { padding-bottom: 0; }
 }
+
+/* ---------- 예산 묶음 (식비 · 기타) ---------- */
+.budget-rows { gap: var(--s5); }
+.b-group { display: grid; gap: var(--s2); }
+.b-grouprow { padding: 2px 0; }
+.budget-rows .b-grouprow .name { color: var(--ink); font-weight: 700; font-size: var(--t-md); }
+.budget-rows .b-grouprow .bar-track { height: 10px; }
+.b-subs { display: grid; gap: var(--s2); margin-left: 6px; padding-left: 12px; border-left: 2px solid var(--line); }
+.b-subs .bar-row { min-height: 0; }
+.b-subs .b-spent { font-weight: 600; font-size: 14px; }
+.b-subs .bar-track { height: 6px; }
+.b-subs .bar-track span { opacity: .75; }
+.budget-rows .b-left.sub b { font-size: 14px; font-weight: 600; color: var(--muted); }
+.budget-rows .b-left.sub.neg b { color: var(--expense); }
+/* 주의·초과는 각주처럼 금액 옆 작은 동그라미 배지 */
+.budget-rows .b-left { grid-template-columns: auto; }
+.budget-rows .b-left b + .fn { margin-top: 2px; }
+.fn {
+  display: inline-grid; place-items: center; height: 18px; padding: 0 6px; border-radius: 999px;
+  font-size: var(--t-xs); font-weight: 700; line-height: 1; vertical-align: super; white-space: nowrap;
+}
+.fn.warn { background: #F7ECD9; color: var(--warn); }
+.fn.over { background: #F8E4E0; color: var(--expense); }
+.b-grouprow .b-left { position: relative; }
+.b-grouprow .b-left b { font-size: var(--t-md); }
+/* 각주처럼: 금액 오른쪽 위에 작게 걸쳐 둔다 */
+.b-grouprow .b-left .fn { position: absolute; top: -19px; right: -2px; height: 17px; padding: 0 5px; vertical-align: baseline; box-shadow: 0 0 0 2px var(--surface); }
+@media (max-width: 720px) { .link-who { padding-top: 0; } .sav-row { grid-template-columns: minmax(0, 1fr) 110px 32px; } }
+.link-name { display: inline-flex; align-items: center; gap: 6px; }
